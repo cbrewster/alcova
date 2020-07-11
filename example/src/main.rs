@@ -4,6 +4,7 @@ use actix_web_actors::ws;
 use alcova_macros::LiveTemplate;
 use listenfd::ListenFd;
 use liveview::{Changes, LiveSocket, LiveTemplate, LiveView, RenderedTemplate, Slot};
+use log::info;
 
 fn fruits() -> Vec<&'static str> {
     include_str!("../fruits.txt").lines().collect()
@@ -96,8 +97,10 @@ async fn hello() -> impl Responder {
 async fn main() -> Result<(), std::io::Error> {
     env_logger::init();
     let mut listenfd = ListenFd::from_env();
-    let port = std::env::var("PORT").unwrap_or("3000".into());
-    let host = std::env::var("HOST").unwrap_or("127.0.0.1".into());
+    let port = std::env::var("PORT")
+        .unwrap_or("3000".into())
+        .parse()
+        .expect("Failed to parse PORT");
 
     let mut server = HttpServer::new(|| {
         App::new()
@@ -111,9 +114,10 @@ async fn main() -> Result<(), std::io::Error> {
     });
 
     server = if let Some(l) = listenfd.take_tcp_listener(0).unwrap() {
+        info!("Watching...");
         server.listen(l)?
     } else {
-        server.bind(format!("{}:{}", host, port))?
+        server.bind(("0.0.0.0", port))?
     };
 
     server.run().await
