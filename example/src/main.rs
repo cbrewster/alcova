@@ -97,6 +97,7 @@ async fn main() -> Result<(), std::io::Error> {
     env_logger::init();
     let mut listenfd = ListenFd::from_env();
     let port = std::env::var("PORT").unwrap_or("3000".into());
+    let host = std::env::var("HOST").unwrap_or("127.0.0.1".into());
 
     let mut server = HttpServer::new(|| {
         App::new()
@@ -112,7 +113,7 @@ async fn main() -> Result<(), std::io::Error> {
     server = if let Some(l) = listenfd.take_tcp_listener(0).unwrap() {
         server.listen(l)?
     } else {
-        server.bind(format!("127.0.0.1:{}", port))?
+        server.bind(format!("{}:{}", host, port))?
     };
 
     server.run().await
