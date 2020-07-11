@@ -1,5 +1,9 @@
 window.onload = () => {
-    let ws = new WebSocket("ws://localhost:3000/ws");
+    if (location.protocol !== 'https:') {
+        ws = new WebSocket(`ws://${location.host}/ws`);
+    } else {
+        ws = new WebSocket(`wss://${location.host}/ws`);
+    }
 
     let root = document.querySelector("#rs-root");
 

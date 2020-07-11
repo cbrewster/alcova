@@ -103,8 +103,8 @@ async fn main() -> Result<(), std::io::Error> {
             // enable logger
             .wrap(middleware::Logger::default())
             // websocket route
+            .route("/", web::get().to(hello))
             .service(web::resource("/ws").route(web::get().to(ws_index)))
-            .service(web::resource("/hello").route(web::get().to(hello)))
             // static files
             .service(fs::Files::new("/", "static/").index_file("index.html"))
     });
