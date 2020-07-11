@@ -1,8 +1,14 @@
 <h1 class="mt-4 text-xl font-bold text-gray-800">Rust LiveView Autocomplete</h1>
 
-{{ if @selected.is_some() }}
-<h2 class="mt-4 font-bold text-sm text-gray-700">You have selected <span class="font-normal">{{ @selected.as_ref().unwrap() }}</span></h2>
+<h2 class="mt-4 font-bold text-xl text-gray-700">Fruit Cart</h2>
+<ul>
+{{ for fruit in @selected }}
+<li class="p-2">
+<button rs-click="remove" rs-value="{{ fruit }}" class="inline-block px-2 font-bold text-sm text-white shadow-sm rounded bg-red-700">X</button>
+<span class="mt-4 font-bold text-sm text-gray-700 font-normal">{{ fruit }}</span>
+</li>
 {{ end }}
+</ul>
 
 <input value="{{ @search }}" rs-change="search" placeholder="Type A Fruit" type="text" class="mt-4 px-4 py-2 rounded shadow focus:outline-ingido-500" />
 

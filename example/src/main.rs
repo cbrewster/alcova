@@ -20,7 +20,7 @@ struct RootTemplate {
 #[alcova(template = "templates/hello.html.rlt")]
 struct HelloTemplate {
     options: Vec<String>,
-    selected: Option<String>,
+    selected: Vec<String>,
     search: String,
 }
 
@@ -28,7 +28,7 @@ impl HelloTemplate {
     fn new() -> Self {
         Self {
             options: Vec::new(),
-            selected: None,
+            selected: Vec::new(),
             search: String::new(),
         }
     }
@@ -60,14 +60,20 @@ impl LiveView for HelloView {
                 let search = value.to_lowercase();
                 self.assigns.options = fruits()
                     .iter()
+                    .filter(|fruit| !self.assigns.selected.contains(&fruit.to_string()))
                     .filter(|fruit| fruit.to_lowercase().contains(&search))
                     .map(|fruit| fruit.to_string())
                     .collect();
             }
             "select" => {
-                self.assigns.selected = Some(value.to_string());
+                self.assigns.selected.push(value.to_string());
                 self.assigns.search = String::new();
                 self.assigns.options.clear();
+            }
+            "remove" => {
+                if let Some(index) = self.assigns.selected.iter().position(|item| item == value) {
+                    self.assigns.selected.remove(index);
+                }
             }
             _ => {}
         }
