@@ -1,0 +1,15 @@
+<h1 class="mt-4 text-xl font-bold text-gray-800">Rust LiveView Autocomplete</h1>
+
+{{ if @selected.is_some() }}
+<h2 class="mt-4 font-bold text-sm text-gray-700">You have selected <span class="font-normal">{{ @selected.as_ref().unwrap() }}</span></h2>
+{{ end }}
+
+<input value="{{ @search }}" rs-change="search" placeholder="Type A Fruit" type="text" class="mt-4 px-4 py-2 rounded shadow focus:outline-ingido-500" />
+
+<div class="mt-4">
+{{ for option in @options }}
+    <button rs-click="select" rs-value="{{ option }}" class="w-full mt-2 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-indigo-100 shadow rounded">
+        {{ option }}
+    </button>
+{{ end }}
+</div>

@@ -1,0 +1,23 @@
+[package]
+name = "example"
+version = "0.1.0"
+authors = ["Connor Brewster <connor.brewster@eagles.oc.edu>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+liveview = { path = "../liveview" }
+alcova = { path = "../alcova" }
+alcova_macros = { path = "../alcova_macros" }
+actix = "0.9.0"
+actix-codec = "0.2.0"
+actix-web = "2.0.0"
+actix-web-actors = "2.0.0"
+actix-files = "0.2.1"
+actix-rt = "1.0.0"
+awc = "1.0.1"
+env_logger = "0.7"
+futures = "0.3.1"
+bytes = "0.5.3"
+listenfd = "0.3"

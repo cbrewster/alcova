@@ -1,4 +1,7 @@
 [workspace]
 members = [
-    "./liveview-rs",
+    "./alcova",
+    "./alcova_macros",
+    "./example",
+    "./liveview",
 ]

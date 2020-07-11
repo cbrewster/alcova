@@ -1,0 +1,23 @@
+<!doctype html>
+
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+
+  <title>Rust LiveView Demo</title>
+  <meta name="description" content="Rust LiveView">
+
+  <link href="https://unpkg.com/tailwindcss@^1.0/dist/tailwind.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-gray-100">
+<div class="mx-auto container">
+    {{ @inner }}
+</div>
+
+<script src="/morphdom.js"></script>
+<script src="/index.js"></script>
+</body>
+</html>
+
+
