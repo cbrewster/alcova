@@ -1,3 +1,5 @@
+mod ast;
 mod parse;
 
-pub use parse::{parse_template, CodeExpression, Expression, Parser, Template};
+pub use ast::{CodeExpression, Expression};
+pub use parse::{parse_template, Parser, Template};

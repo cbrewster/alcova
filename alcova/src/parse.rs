@@ -1,3 +1,5 @@
+use crate::ast::{CodeExpression, Expression};
+
 const KEYWORDS: &'static [&'static str] = &["if", "else", "for", "match", "end"];
 
 macro_rules! any_of {
@@ -14,96 +16,6 @@ macro_rules! any_of {
             err
         }
     };
-}
-
-// TODO: Rename this to something that makes more sense
-#[derive(Debug, PartialEq)]
-pub enum CodeExpression {
-    Symbol {
-        name: String,
-        assigned: bool,
-    },
-    Accessor {
-        on: Box<CodeExpression>,
-        field: String,
-    },
-    Call {
-        on: Box<CodeExpression>,
-        params: Vec<CodeExpression>,
-    },
-}
-
-impl CodeExpression {
-    pub fn get_dependencies(&self) -> Vec<String> {
-        match self {
-            CodeExpression::Symbol { name, assigned } => {
-                if *assigned {
-                    vec![name.clone()]
-                } else {
-                    vec![]
-                }
-            }
-            CodeExpression::Accessor { on, .. } => on.get_dependencies(),
-            CodeExpression::Call { on, params } => {
-                let mut deps = on.get_dependencies();
-                for param in params {
-                    deps.extend(param.get_dependencies().into_iter());
-                }
-                deps
-            }
-        }
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Expression {
-    Literal(String),
-    CodeBlock(CodeExpression),
-    For {
-        iterator: Box<CodeExpression>,
-        binding: String,
-        body: Vec<Expression>,
-    },
-    If {
-        condition: Box<CodeExpression>,
-        true_arm: Vec<Expression>,
-        false_arm: Vec<Expression>,
-    },
-}
-
-impl Expression {
-    pub fn get_dependencies(&self) -> Vec<String> {
-        match self {
-            Expression::Literal(_) => vec![],
-            Expression::CodeBlock(code_expr) => code_expr.get_dependencies(),
-            Expression::For { iterator, body, .. } => {
-                let mut deps = iterator.get_dependencies();
-                deps.extend(
-                    body.iter()
-                        .flat_map(|expr| expr.get_dependencies().into_iter()),
-                );
-                deps
-            }
-            Expression::If {
-                condition,
-                true_arm,
-                false_arm,
-            } => {
-                let mut deps = condition.get_dependencies();
-                deps.extend(
-                    true_arm
-                        .iter()
-                        .flat_map(|expr| expr.get_dependencies().into_iter()),
-                );
-                deps.extend(
-                    false_arm
-                        .iter()
-                        .flat_map(|expr| expr.get_dependencies().into_iter()),
-                );
-                deps
-            }
-        }
-    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -685,7 +597,7 @@ mod test {
     #[test]
     fn test_template() {
         let template = r#"<h1>Hello {{ @name }}!</h1><p>Count is {{ count }}</p>{{ @deal.business.address }}{{ @business.display_name() }}{{ @business.display_name(time, @name) }}{{ for name in @names }}<h3>{{ name }}</h3>{{ end }}{{ if @thing }}Enabled!{{ else }}Disabled{{ end }}"#;
-        dbg!(parse_template().parse(template),);
+        // dbg!(parse_template().parse(template),);
         assert_eq!(
             parse_template().parse(template),
             Ok((
@@ -742,6 +654,29 @@ mod test {
                                 },
                             ]
                         }),
+                        Expression::For {
+                            iterator: Box::new(CodeExpression::Symbol {
+                                name: "names".into(),
+                                assigned: true
+                            }),
+                            binding: "name".into(),
+                            body: vec![
+                                Expression::Literal("<h3>".into()),
+                                Expression::CodeBlock(CodeExpression::Symbol {
+                                    name: "name".into(),
+                                    assigned: false,
+                                }),
+                                Expression::Literal("</h3>".into()),
+                            ]
+                        },
+                        Expression::If {
+                            condition: Box::new(CodeExpression::Symbol {
+                                name: "thing".into(),
+                                assigned: true
+                            }),
+                            true_arm: vec![Expression::Literal("Enabled!".into()),],
+                            false_arm: vec![Expression::Literal("Disabled".into())],
+                        },
                     ]
                 }
             ))
