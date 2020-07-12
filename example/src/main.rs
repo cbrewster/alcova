@@ -1,14 +1,17 @@
+#[macro_use]
+extern crate log;
+
+mod fruit;
+mod timer;
+
 use actix_files as fs;
 use actix_web::{middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder};
 use actix_web_actors::ws;
 use alcova_macros::LiveTemplate;
+use fruit::FruitLive;
 use listenfd::ListenFd;
-use liveview::{Changes, LiveSocket, LiveTemplate, LiveView, RenderedTemplate, Slot};
-use log::info;
-
-fn fruits() -> Vec<&'static str> {
-    include_str!("../fruits.txt").lines().collect()
-}
+use liveview::{LiveSocket, LiveTemplate, LiveViewRegistry};
+use timer::TimerLive;
 
 #[derive(LiveTemplate)]
 #[alcova(template = "templates/layout.html.rlt")]
@@ -16,85 +19,26 @@ struct RootTemplate {
     inner: String,
 }
 
-#[derive(Debug, Clone, LiveTemplate, PartialEq)]
-#[alcova(template = "templates/hello.html.rlt")]
-struct HelloTemplate {
-    options: Vec<String>,
-    selected: Vec<String>,
-    search: String,
-}
-
-impl HelloTemplate {
-    fn new() -> Self {
-        Self {
-            options: Vec::new(),
-            selected: Vec::new(),
-            search: String::new(),
-        }
-    }
-}
-
-struct HelloView {
-    assigns: HelloTemplate,
-}
-
-impl HelloView {
-    fn new() -> Self {
-        Self {
-            assigns: HelloTemplate::new(),
-        }
-    }
-}
-
-impl LiveView for HelloView {
-    type Template = HelloTemplate;
-
-    fn handle_event(&mut self, event: &str, value: &str) {
-        match event {
-            "search" => {
-                self.assigns.search = value.to_string();
-                if self.assigns.search.is_empty() {
-                    self.assigns.options.clear();
-                    return;
-                }
-                let search = value.to_lowercase();
-                self.assigns.options = fruits()
-                    .iter()
-                    .filter(|fruit| !self.assigns.selected.contains(&fruit.to_string()))
-                    .filter(|fruit| fruit.to_lowercase().contains(&search))
-                    .map(|fruit| fruit.to_string())
-                    .collect();
-            }
-            "select" => {
-                self.assigns.selected.push(value.to_string());
-                self.assigns.search = String::new();
-                self.assigns.options.clear();
-            }
-            "remove" => {
-                if let Some(index) = self.assigns.selected.iter().position(|item| item == value) {
-                    self.assigns.selected.remove(index);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    fn render(&self) -> Self::Template {
-        self.assigns.clone()
-    }
-}
+#[derive(LiveTemplate)]
+#[alcova(template = "templates/index.html.rlt")]
+struct IndexTemplate;
 
 /// do websocket handshake and start `MyWebSocket` actor
-async fn ws_index(r: HttpRequest, stream: web::Payload) -> Result<HttpResponse, Error> {
-    let view = HelloView::new();
-    let res = ws::start(LiveSocket::new(view), &r, stream);
+async fn ws_index(
+    registry: web::Data<LiveViewRegistry>,
+    r: HttpRequest,
+    stream: web::Payload,
+) -> Result<HttpResponse, Error> {
+    // TODO: Cleanup... Data gives us an Arc but we have an Arc in the Arc
+    // Maybe just require making the registry inside HttpServer::new
+    let registry = &*registry.into_inner();
+    let res = ws::start(LiveSocket::new(registry.clone()), &r, stream);
     res
 }
 
-async fn hello() -> impl Responder {
-    let initial_template = HelloTemplate::new();
+async fn index() -> impl Responder {
     let root_layout = RootTemplate {
-        inner: initial_template.render_with_wrapper(),
+        inner: IndexTemplate.render_to_string(),
     };
     HttpResponse::Ok().body(root_layout.render_to_string())
 }
@@ -108,13 +52,21 @@ async fn main() -> Result<(), std::io::Error> {
         .parse()
         .expect("Failed to parse PORT");
 
-    let mut server = HttpServer::new(|| {
+    let registry = LiveViewRegistry::builder()
+        .register::<FruitLive>()
+        .register::<TimerLive>()
+        .build();
+
+    let mut server = HttpServer::new(move || {
         App::new()
+            .data(registry.clone())
             // enable logger
             .wrap(middleware::Logger::default())
             // websocket route
-            .route("/", web::get().to(hello))
             .service(web::resource("/ws").route(web::get().to(ws_index)))
+            .route("/", web::get().to(index))
+            .configure(fruit::config)
+            .configure(timer::config)
             // static files
             .service(fs::Files::new("/", "static/").index_file("index.html"))
     });

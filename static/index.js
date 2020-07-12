@@ -7,22 +7,33 @@ window.onload = () => {
 
     let root = document.querySelector("#rs-root");
 
+    ws.onopen = () => {
+        console.log("Connecting to live view...");
+        ws.send(JSON.stringify({
+            SpawnLiveView: {
+                name: root.getAttribute("rs-view") 
+            }
+        }));
+    };
+
     let template = null;
+    let liveViewId = null;
 
     ws.onmessage = (msg) => {
         let event = JSON.parse(msg.data);
         if (event.Template) {
-            template = event.Template;
-            update(ws, root, template);
+            template = event.Template.template;
+            liveViewId = event.Template.id;
+            update(ws, liveViewId, root, template);
         }
         if (event.Changes) {
             applyChanges(template, event.Changes.changes);
-            update(ws, root, template);
+            update(ws, liveViewId, root, template);
         }
     }
 };
 
-function update(ws, root, template) {
+function update(ws, liveViewId, root, template) {
     morphdom(root, `<div id="rs-root">` + renderTemplate(template) + `</div>`, {
         childrenOnly: true
     });
@@ -31,8 +42,13 @@ function update(ws, root, template) {
     clickers.forEach((clicker) => {
         clicker.onclick = () => {
             ws.send(JSON.stringify({
-                action: clicker.getAttribute("rs-click"),
-                value: clicker.getAttribute("rs-value")
+                LiveView: {
+                    id: liveViewId,
+                    action: {
+                        action: clicker.getAttribute("rs-click"),
+                        value: clicker.getAttribute("rs-value")
+                    },
+                }
             }));
         }
     });
@@ -41,8 +57,13 @@ function update(ws, root, template) {
     fields.forEach((field) => {
         field.oninput = (e) => {
             ws.send(JSON.stringify({
-                action: field.getAttribute("rs-change"),
-                value: e.target.value,
+                LiveView: {
+                    id: liveViewId,
+                    action: {
+                        action: field.getAttribute("rs-change"),
+                        value: e.target.value,
+                    },
+                }
             }));
         }
     });

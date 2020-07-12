@@ -95,7 +95,7 @@ fn impl_live_template(ast: &syn::DeriveInput) -> TokenStream {
         #[allow(unused_qualifications)]
         impl liveview::LiveTemplate for #name {
             fn render(&self) -> liveview::RenderedTemplate {
-                RenderedTemplate {
+                liveview::RenderedTemplate {
                     slots: vec![
                         #slots
                     ]
@@ -107,7 +107,7 @@ fn impl_live_template(ast: &syn::DeriveInput) -> TokenStream {
 
                 #changes
 
-                Changes { changes }
+                liveview::Changes { changes }
             }
         }
     };
@@ -248,12 +248,12 @@ fn generate_slots(template: &alcova::Template) -> Result<proc_macro2::TokenStrea
         match expression {
             Expression::Literal(_) => {
                 tokens.extend(quote! {
-                    Slot::Static(#value),
+                    liveview::Slot::Static(#value),
                 });
             }
             Expression::CodeBlock(_) | Expression::For { .. } | Expression::If { .. } => {
                 tokens.extend(quote! {
-                    Slot::Dynamic(#value),
+                    liveview::Slot::Dynamic(#value),
                 });
             }
         }
