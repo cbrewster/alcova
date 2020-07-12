@@ -1,8 +1,10 @@
 use crate::RootTemplate;
-use actix::{AsyncContext, SpawnHandle};
+use actix::{AsyncContext, Message, SpawnHandle};
 use actix_web::{web, Responder};
 use alcova_macros::LiveTemplate;
-use liveview::{LiveSocketContext, LiveTemplate, LiveView, LiveViewContext};
+use liveview::{
+    LiveHandler, LiveMessage, LiveSocketContext, LiveTemplate, LiveView, LiveViewContext,
+};
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, LiveTemplate, PartialEq)]
@@ -10,6 +12,12 @@ use std::time::{Duration, Instant};
 pub struct TimerTemplate {
     duration: Duration,
 }
+
+#[derive(Message)]
+#[rtype(result = "()")]
+struct Tick;
+
+impl LiveMessage for Tick {}
 
 fn format_time(time: &Duration) -> String {
     let seconds = time.as_secs();
@@ -31,6 +39,12 @@ pub struct TimerLive {
     assigns: TimerTemplate,
     started_at: Instant,
     timer: Option<SpawnHandle>,
+}
+
+impl LiveHandler<Tick> for TimerLive {
+    fn handle(&mut self, _msg: Tick, _ctx: &mut LiveViewContext<Self>) {
+        self.assigns.duration = self.started_at.elapsed();
+    }
 }
 
 impl TimerLive {
@@ -59,9 +73,8 @@ impl LiveView for TimerLive {
             "start" => {
                 self.started_at = Instant::now();
 
-                let handle = ctx.run_interval(Duration::from_millis(10), |actor, _ctx| {
-                    actor.view.assigns.duration = actor.view.started_at.elapsed();
-                    actor.send_changes();
+                let handle = ctx.run_interval(Duration::from_millis(10), |_actor, ctx| {
+                    ctx.address().do_send(Tick);
                 });
                 self.timer = Some(handle);
             }
