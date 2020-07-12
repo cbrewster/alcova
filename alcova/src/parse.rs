@@ -1,19 +1,30 @@
-use crate::ast::{CodeExpression, Expression};
+use crate::ast::{CodeExpression, Expression, Pattern, TypePath};
 
-const KEYWORDS: &'static [&'static str] = &["if", "else", "for", "match", "end"];
+const KEYWORDS: &'static [&'static str] = &["if", "else", "for", "match", "end", "let"];
 
 macro_rules! any_of {
     ($($parser:expr),*) => {
-        #[allow(unused_assignments)]
         move |input| {
-            let mut err = Err(input);
+            let err = Err(input);
             $(
-                match ($parser).parse(input) {
-                    ok @ Ok(_) => return ok,
-                    e @ Err(_) => err = e,
+                if let Ok(result) = ($parser).parse(input) {
+                    return Ok(result);
                 }
             )*
             err
+        }
+    };
+}
+
+macro_rules! all_of {
+    ($($parser:expr),*) => {
+        #[allow(unused_assignments)]
+        move |mut input| {
+            $(
+                let (new_input, _) = ($parser).parse(input)?;
+                input = new_input;
+            )*
+            Ok((input, ()))
         }
     };
 }
@@ -54,8 +65,117 @@ fn code_block<'a>() -> impl Parser<'a, Expression> {
             .parse(input)
     };
 
-    any_of! {
-        for_expression(), if_expression(), symbol_or_call
+    any_of!(
+        for_expression(),
+        if_let_expression(),
+        if_expression(),
+        symbol_or_call
+    )
+}
+
+fn type_path<'a>() -> impl Parser<'a, TypePath> {
+    pair(
+        zero_or_more(left(non_keyword_ident(), literal("::"))),
+        non_keyword_ident(),
+    )
+    .map(|(mut segments, trailing)| {
+        segments.push(trailing);
+        TypePath { segments }
+    })
+}
+
+fn pattern<'a>() -> impl Parser<'a, Pattern> {
+    let struct_or_enum = move |input| {
+        let (input, type_path) = type_path().parse(input)?;
+
+        let (input, _) = space0().parse(input)?;
+
+        let (input, opening) = any_char.pred(|c| ['{', '('].contains(c)).parse(input)?;
+
+        match opening {
+            '{' => {
+                let matched_field = pair(
+                    BoxedParser::new(whitespace_wrap(left(
+                        whitespace_wrap(non_keyword_ident()),
+                        literal(":"),
+                    ))),
+                    pattern(),
+                );
+                let bound_field = whitespace_wrap(non_keyword_ident())
+                    .map(|name| (name.clone(), Pattern::Binding { name }));
+                // Box to not hit Rust type recursion limit :)
+                let field_parser = BoxedParser::new(any_of!(matched_field, bound_field));
+                let (input, fields) =
+                    delimited_list(whitespace_wrap(field_parser), ",").parse(input)?;
+
+                let (input, _) = pair(space0(), literal("}")).parse(input)?;
+
+                Ok((input, Pattern::Struct { type_path, fields }))
+            }
+            '(' => {
+                let (input, fields) =
+                    delimited_list(whitespace_wrap(pattern()), ",").parse(input)?;
+                let (input, _) = pair(space0(), literal(")")).parse(input)?;
+
+                Ok((input, Pattern::Enum { type_path, fields }))
+            }
+            _ => unreachable!(),
+        }
+    };
+
+    let binding = non_keyword_ident().map(|name| Pattern::Binding { name });
+
+    any_of!(struct_or_enum, binding)
+}
+
+fn if_let_expression<'a>() -> impl Parser<'a, Expression> {
+    move |input| {
+        let (input, _) = all_of!(
+            literal("{{"),
+            space0(),
+            literal("if"),
+            space1(),
+            literal("let"),
+            space1()
+        )
+        .parse(input)?;
+
+        let (input, pattern) = pattern().parse(input)?;
+
+        let (input, _) = whitespace_wrap(literal("=")).parse(input)?;
+
+        let (input, data) = code().parse(input)?;
+
+        let (input, _) = pair(space0(), literal("}}")).parse(input)?;
+
+        let (input, true_arm) = zero_or_more(expression()).parse(input)?;
+
+        let (input, false_arm) = if let Ok((input, _)) = pair(
+            pair(literal("{{"), whitespace_wrap(literal("else"))),
+            literal("}}"),
+        )
+        .parse(input)
+        {
+            zero_or_more(expression()).parse(input)?
+        } else {
+            (input, vec![])
+        };
+
+        let (input, _) = pair(
+            pair(literal("{{"), whitespace_wrap(literal("end"))),
+            literal("}}"),
+        )
+        .parse(input)?;
+
+        Ok((
+            input,
+            Expression::IfLet {
+                pattern,
+                data: Box::new(data),
+                true_arm,
+                false_arm,
+            },
+        ))
     }
 }
 
@@ -596,7 +716,7 @@ mod test {
 
     #[test]
     fn test_template() {
-        let template = r#"<h1>Hello {{ @name }}!</h1><p>Count is {{ count }}</p>{{ @deal.business.address }}{{ @business.display_name() }}{{ @business.display_name(time, @name) }}{{ for name in @names }}<h3>{{ name }}</h3>{{ end }}{{ if @thing }}Enabled!{{ else }}Disabled{{ end }}"#;
+        let template = r#"<h1>Hello {{ @name }}!</h1><p>Count is {{ count }}</p>{{ @deal.business.address }}{{ @business.display_name() }}{{ @business.display_name(time, @name) }}{{ for name in @names }}<h3>{{ name }}</h3>{{ end }}{{ if @thing }}Enabled!{{ else }}Disabled{{ end }}{{ if let Expression::Code(inner, Some(thing)) = thing }}{{ inner }}{{ end }}{{ if let some::module::Thing { a: Some(b), c, d: Other { a } } = my_thing }}{{ a }}{{ end }}"#;
         // dbg!(parse_template().parse(template),);
         assert_eq!(
             parse_template().parse(template),
@@ -676,6 +796,75 @@ mod test {
                             }),
                             true_arm: vec![Expression::Literal("Enabled!".into()),],
                             false_arm: vec![Expression::Literal("Disabled".into())],
+                        },
+                        Expression::IfLet {
+                            pattern: Pattern::Enum {
+                                type_path: TypePath {
+                                    segments: vec!["Expression".into(), "Code".into()],
+                                },
+                                fields: vec![
+                                    Pattern::Binding {
+                                        name: "inner".into()
+                                    },
+                                    Pattern::Enum {
+                                        type_path: TypePath {
+                                            segments: vec!["Some".into()],
+                                        },
+                                        fields: vec![Pattern::Binding {
+                                            name: "thing".into()
+                                        },],
+                                    },
+                                ],
+                            },
+                            data: Box::new(CodeExpression::Symbol {
+                                name: "thing".into(),
+                                assigned: false,
+                            }),
+                            true_arm: vec![Expression::CodeBlock(CodeExpression::Symbol {
+                                name: "inner".into(),
+                                assigned: false,
+                            },),],
+                            false_arm: vec![],
+                        },
+                        Expression::IfLet {
+                            pattern: Pattern::Struct {
+                                type_path: TypePath {
+                                    segments: vec!["some".into(), "module".into(), "Thing".into(),],
+                                },
+                                fields: vec![
+                                    (
+                                        "a".into(),
+                                        Pattern::Enum {
+                                            type_path: TypePath {
+                                                segments: vec!["Some".into(),],
+                                            },
+                                            fields: vec![Pattern::Binding { name: "b".into() },],
+                                        },
+                                    ),
+                                    ("c".into(), Pattern::Binding { name: "c".into() },),
+                                    (
+                                        "d".into(),
+                                        Pattern::Struct {
+                                            type_path: TypePath {
+                                                segments: vec!["Other".into(),],
+                                            },
+                                            fields: vec![(
+                                                "a".into(),
+                                                Pattern::Binding { name: "a".into() },
+                                            ),],
+                                        },
+                                    ),
+                                ],
+                            },
+                            data: Box::new(CodeExpression::Symbol {
+                                name: "my_thing".into(),
+                                assigned: false,
+                            }),
+                            true_arm: vec![Expression::CodeBlock(CodeExpression::Symbol {
+                                name: "a".into(),
+                                assigned: false,
+                            },),],
+                            false_arm: vec![],
                         },
                     ]
                 }

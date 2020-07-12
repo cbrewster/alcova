@@ -1,7 +1,7 @@
 extern crate proc_macro;
 
-use alcova::{parse_template, CodeExpression, Expression, Parser};
-use proc_macro::{TokenStream, TokenTree};
+use alcova::{parse_template, CodeExpression, Expression, Parser, Pattern, TypePath};
+use proc_macro::TokenStream;
 use proc_macro_error::{abort, proc_macro_error};
 use quote::quote;
 use std::fs::File;
@@ -156,6 +156,57 @@ fn generate_code_expression(
     tokens.into_iter().collect()
 }
 
+fn generate_type_path(type_path: &TypePath) -> proc_macro2::TokenStream {
+    let mut tokens: Vec<proc_macro2::TokenTree> = vec![];
+
+    for (i, segment) in type_path.segments.iter().enumerate() {
+        let segment = format_ident!("{}", segment);
+        tokens.extend(quote! { #segment });
+        if i != type_path.segments.len() - 1 {
+            tokens.extend(quote! { :: });
+        }
+    }
+
+    tokens.into_iter().collect()
+}
+
+fn generate_pattern(pattern: &Pattern) -> proc_macro2::TokenStream {
+    let mut tokens: Vec<proc_macro2::TokenTree> = vec![];
+
+    match pattern {
+        Pattern::Binding { name } => {
+            let name = format_ident!("{}", name);
+            tokens.extend(quote! { ref #name });
+        }
+        Pattern::Enum { type_path, fields } => {
+            let type_path = generate_type_path(type_path);
+            let fields = fields
+                .iter()
+                .map(|pattern| generate_pattern(pattern))
+                .collect::<Vec<_>>();
+
+            tokens.extend(quote! {
+                #type_path (#( #fields,)*)
+            });
+        }
+        Pattern::Struct { type_path, fields } => {
+            let type_path = generate_type_path(type_path);
+
+            let patterns = fields.iter().map(|(_, pattern)| generate_pattern(pattern));
+
+            let bindings = fields
+                .iter()
+                .map(|(binding, _)| format_ident!("{}", binding));
+
+            tokens.extend(quote! {
+                #type_path { #( #bindings: #patterns,)* }
+            });
+        }
+    }
+
+    tokens.into_iter().collect()
+}
+
 fn generate_expression(expression: &Expression, assignee: &str) -> proc_macro2::TokenStream {
     let mut tokens: Vec<proc_macro2::TokenTree> = vec![];
 
@@ -235,6 +286,49 @@ fn generate_expression(expression: &Expression, assignee: &str) -> proc_macro2::
                 }
             });
         }
+        Expression::IfLet {
+            pattern,
+            data,
+            true_arm,
+            false_arm,
+        } => {
+            let pattern = generate_pattern(pattern);
+            let data = generate_code_expression(data, assignee);
+
+            let mut true_arm_tokens = vec![];
+
+            for child in true_arm {
+                let child = generate_expression(child, "self");
+                true_arm_tokens.extend(quote! {
+                    string.push_str(&#child);
+                });
+            }
+
+            let true_arm: proc_macro2::TokenStream = true_arm_tokens.into_iter().collect();
+
+            let mut false_arm_tokens = vec![];
+
+            for child in false_arm {
+                let child = generate_expression(child, "self");
+                false_arm_tokens.extend(quote! {
+                    string.push_str(&#child);
+                });
+            }
+
+            let false_arm: proc_macro2::TokenStream = false_arm_tokens.into_iter().collect();
+
+            tokens.extend(quote! {
+                {
+                    let mut string = String::new();
+                    if let #pattern = #data {
+                        #true_arm
+                    } else {
+                        #false_arm
+                    }
+                    string
+                }
+            });
+        }
     }
 
     tokens.into_iter().collect()
@@ -251,7 +345,10 @@ fn generate_slots(template: &alcova::Template) -> Result<proc_macro2::TokenStrea
                     liveview::Slot::Static(#value),
                 });
             }
-            Expression::CodeBlock(_) | Expression::For { .. } | Expression::If { .. } => {
+            Expression::CodeBlock(_)
+            | Expression::For { .. }
+            | Expression::If { .. }
+            | Expression::IfLet { .. } => {
                 tokens.extend(quote! {
                     liveview::Slot::Dynamic(#value),
                 });

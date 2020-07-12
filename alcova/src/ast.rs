@@ -51,6 +51,32 @@ pub enum Expression {
         true_arm: Vec<Expression>,
         false_arm: Vec<Expression>,
     },
+    IfLet {
+        pattern: Pattern,
+        data: Box<CodeExpression>,
+        true_arm: Vec<Expression>,
+        false_arm: Vec<Expression>,
+    },
+}
+
+#[derive(Debug, PartialEq)]
+pub struct TypePath {
+    pub segments: Vec<String>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Pattern {
+    Binding {
+        name: String,
+    },
+    Enum {
+        type_path: TypePath,
+        fields: Vec<Pattern>,
+    },
+    Struct {
+        type_path: TypePath,
+        fields: Vec<(String, Pattern)>,
+    },
 }
 
 impl Expression {
@@ -72,6 +98,25 @@ impl Expression {
                 false_arm,
             } => {
                 let mut deps = condition.get_dependencies();
+                deps.extend(
+                    true_arm
+                        .iter()
+                        .flat_map(|expr| expr.get_dependencies().into_iter()),
+                );
+                deps.extend(
+                    false_arm
+                        .iter()
+                        .flat_map(|expr| expr.get_dependencies().into_iter()),
+                );
+                deps
+            }
+            Expression::IfLet {
+                data,
+                true_arm,
+                false_arm,
+                ..
+            } => {
+                let mut deps = data.get_dependencies();
                 deps.extend(
                     true_arm
                         .iter()
