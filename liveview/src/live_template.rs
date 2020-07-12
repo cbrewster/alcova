@@ -1,3 +1,4 @@
+use actix_web::{HttpRequest, HttpResponse, Responder};
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -37,14 +38,14 @@ pub struct Changes {
 /// A live template.
 ///
 /// Knows how track changes within itself.
-pub trait LiveTemplate {
+pub trait LiveTemplate: Sized {
     fn render(&self) -> RenderedTemplate;
 
     fn changes(&self, old_template: &Self) -> Changes;
 
     /// Render the template to a string.
     /// This is useful to render the template for regular HTTP requests.
-    fn render_to_string(&self) -> String {
+    fn to_string(&self) -> String {
         self.render().to_string()
     }
 
@@ -52,7 +53,32 @@ pub trait LiveTemplate {
         format!(
             "<div id=\"rs-root\" rs-view=\"{}\">{}</div>",
             view,
-            self.render_to_string()
+            self.to_string()
         )
+    }
+
+    fn to_response(self) -> LiveTemplateResponse<Self> {
+        LiveTemplateResponse {
+            live_template: self,
+        }
+    }
+}
+
+pub struct LiveTemplateResponse<T> {
+    live_template: T,
+}
+
+impl<T> Responder for LiveTemplateResponse<T>
+where
+    T: LiveTemplate,
+{
+    type Error = actix_web::Error;
+    type Future = futures::future::Ready<Result<HttpResponse, actix_web::Error>>;
+
+    fn respond_to(self, _req: &HttpRequest) -> Self::Future {
+        let body = self.live_template.to_string();
+
+        // Create response and set content type
+        futures::future::ready(Ok(HttpResponse::Ok().body(body)))
     }
 }

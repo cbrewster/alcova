@@ -3,6 +3,7 @@ use crate::{
     LiveSocket, LiveTemplate,
 };
 use actix::{Actor, Addr, Context, Handler, Message};
+use actix_web::{HttpRequest, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -21,6 +22,33 @@ pub trait LiveView: Sized + Unpin + 'static {
     fn handle_event(&mut self, event: &str, value: &str, ctx: &mut LiveViewContext<Self>);
 
     fn template(&self) -> Self::Template;
+
+    fn to_string(&self) -> String {
+        self.template().render_with_wrapper(Self::name())
+    }
+
+    fn to_response(self) -> LiveViewResponse<Self> {
+        LiveViewResponse { live_view: self }
+    }
+}
+
+pub struct LiveViewResponse<T> {
+    live_view: T,
+}
+
+impl<T> Responder for LiveViewResponse<T>
+where
+    T: LiveView,
+{
+    type Error = actix_web::Error;
+    type Future = futures::future::Ready<Result<HttpResponse, actix_web::Error>>;
+
+    fn respond_to(self, _req: &HttpRequest) -> Self::Future {
+        let body = self.live_view.to_string();
+
+        // Create response and set content type
+        futures::future::ready(Ok(HttpResponse::Ok().body(body)))
+    }
 }
 
 #[derive(Message, Debug, Deserialize)]

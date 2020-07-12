@@ -38,9 +38,9 @@ async fn ws_index(
 
 async fn index() -> impl Responder {
     let root_layout = RootTemplate {
-        inner: IndexTemplate.render_to_string(),
+        inner: IndexTemplate.to_string(),
     };
-    HttpResponse::Ok().body(root_layout.render_to_string())
+    root_layout.to_response()
 }
 
 #[actix_rt::main]

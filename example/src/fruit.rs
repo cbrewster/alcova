@@ -1,5 +1,5 @@
 use crate::RootTemplate;
-use actix_web::{web, HttpResponse, Responder};
+use actix_web::{web, Responder};
 use alcova_macros::LiveTemplate;
 use liveview::{LiveTemplate, LiveView, LiveViewContext};
 
@@ -84,11 +84,10 @@ impl LiveView for FruitLive {
 }
 
 async fn fruit() -> impl Responder {
-    let initial_template = FruitTemplate::new();
     let root_layout = RootTemplate {
-        inner: initial_template.render_with_wrapper(FruitLive::name()),
+        inner: FruitLive::new().to_string(),
     };
-    HttpResponse::Ok().body(root_layout.render_to_string())
+    root_layout.to_response()
 }
 
 pub fn config(cfg: &mut web::ServiceConfig) {
