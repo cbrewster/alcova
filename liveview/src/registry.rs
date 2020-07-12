@@ -1,4 +1,5 @@
 use crate::{
+    live_socket::LiveSocketContext,
     live_view::{LiveViewAction, LiveViewActor, LiveViewId},
     LiveSocket, LiveView,
 };
@@ -6,15 +7,27 @@ use actix::{Actor, Addr, Recipient};
 use std::{collections::HashMap, sync::Arc};
 
 trait LiveViewSpawner: Sync + Send {
-    fn spawn(&self, id: LiveViewId, socket: Addr<LiveSocket>) -> Recipient<LiveViewAction>;
+    fn spawn(
+        &self,
+        id: LiveViewId,
+        socket: Addr<LiveSocket>,
+        context: &LiveSocketContext,
+    ) -> Recipient<LiveViewAction>;
 }
 
 impl<F> LiveViewSpawner for F
 where
-    F: Sync + Send + Fn(LiveViewId, Addr<LiveSocket>) -> Recipient<LiveViewAction>,
+    F: Sync
+        + Send
+        + for<'r> Fn(LiveViewId, Addr<LiveSocket>, &'r LiveSocketContext) -> Recipient<LiveViewAction>,
 {
-    fn spawn(&self, id: LiveViewId, socket: Addr<LiveSocket>) -> Recipient<LiveViewAction> {
-        self(id, socket)
+    fn spawn<'a>(
+        &self,
+        id: LiveViewId,
+        socket: Addr<LiveSocket>,
+        ctx: &'a LiveSocketContext,
+    ) -> Recipient<LiveViewAction> {
+        self(id, socket, ctx)
     }
 }
 
@@ -37,7 +50,11 @@ impl LiveViewRegistryBuilder {
     pub fn register<T: LiveView + Unpin + 'static>(mut self) -> Self {
         self.live_views.insert(
             T::name().into(),
-            Box::new(|id, socket| LiveViewActor::<T>::new(id, socket).start().recipient()),
+            Box::new(|id, socket, context: &LiveSocketContext| {
+                LiveViewActor::<T>::new(id, socket, context)
+                    .start()
+                    .recipient()
+            }),
         );
         self
     }
@@ -55,9 +72,10 @@ impl LiveViewRegistry {
         name: T,
         id: LiveViewId,
         socket: Addr<LiveSocket>,
+        ctx: &LiveSocketContext,
     ) -> Option<Recipient<LiveViewAction>> {
         self.live_views
             .get(name.as_ref())
-            .map(|spawner| spawner.spawn(id, socket))
+            .map(|spawner| spawner.spawn(id, socket, ctx))
     }
 }

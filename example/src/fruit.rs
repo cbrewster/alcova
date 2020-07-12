@@ -1,7 +1,7 @@
 use crate::RootTemplate;
 use actix_web::{web, Responder};
 use alcova_macros::LiveTemplate;
-use liveview::{LiveTemplate, LiveView, LiveViewContext};
+use liveview::{LiveSocketContext, LiveTemplate, LiveView, LiveViewContext};
 
 fn fruits() -> Vec<&'static str> {
     include_str!("../fruits.txt").lines().collect()
@@ -44,7 +44,7 @@ impl LiveView for FruitLive {
         "fruit"
     }
 
-    fn mount() -> Self {
+    fn mount(_socket_ctx: &LiveSocketContext) -> Self {
         Self::new()
     }
 

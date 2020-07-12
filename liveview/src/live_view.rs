@@ -1,14 +1,19 @@
 use crate::{
-    live_socket::{ClientMessage, SocketViewMessage},
+    live_socket::{ClientMessage, LiveSocketContext, SocketViewMessage},
     LiveSocket, LiveTemplate,
 };
 use actix::{Actor, Addr, Context, Handler, Message};
 use actix_web::{HttpRequest, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
+use std::any::Any;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct LiveViewId(pub usize);
+
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct LiveViewMessage(pub Box<dyn Any + Send>);
 
 pub type LiveViewContext<T> = Context<LiveViewActor<T>>;
 
@@ -17,9 +22,13 @@ pub trait LiveView: Sized + Unpin + 'static {
 
     fn name() -> &'static str;
 
-    fn mount() -> Self;
+    fn mount(socket_ctx: &LiveSocketContext) -> Self;
 
-    fn handle_event(&mut self, event: &str, value: &str, ctx: &mut LiveViewContext<Self>);
+    fn started(&mut self, _ctx: &mut LiveViewContext<Self>) {}
+
+    fn handle_event(&mut self, _event: &str, _value: &str, _ctx: &mut LiveViewContext<Self>) {}
+
+    fn handle_message(&mut self, _message: LiveViewMessage, _ctx: &mut LiveViewContext<Self>) {}
 
     fn template(&self) -> Self::Template;
 
@@ -66,10 +75,10 @@ pub struct LiveViewActor<T: LiveView> {
 }
 
 impl<T: LiveView + Unpin + 'static> LiveViewActor<T> {
-    pub fn new(id: LiveViewId, socket: Addr<LiveSocket>) -> Self {
+    pub fn new(id: LiveViewId, socket: Addr<LiveSocket>, context: &LiveSocketContext) -> Self {
         LiveViewActor {
             id,
-            view: T::mount(),
+            view: T::mount(context),
             socket,
             old_template: None,
         }
@@ -89,7 +98,8 @@ where
 {
     type Context = Context<Self>;
 
-    fn started(&mut self, _ctx: &mut Self::Context) {
+    fn started(&mut self, ctx: &mut Self::Context) {
+        self.view.started(ctx);
         let template = self.view.template();
         let message = ClientMessage::Template {
             template: template.render(),
@@ -110,5 +120,23 @@ where
         let value = msg.value.unwrap_or(String::new());
         self.view.handle_event(&msg.action, &value, ctx);
         self.send_changes();
+    }
+}
+
+impl<T> Handler<LiveViewMessage> for LiveViewActor<T>
+where
+    T: LiveView + Unpin + 'static,
+{
+    type Result = ();
+
+    fn handle(&mut self, msg: LiveViewMessage, ctx: &mut Self::Context) -> Self::Result {
+        self.view.handle_message(msg, ctx);
+        self.send_changes();
+    }
+}
+
+impl LiveViewMessage {
+    pub fn get<T: Any>(&self) -> Option<&T> {
+        self.0.downcast_ref()
     }
 }

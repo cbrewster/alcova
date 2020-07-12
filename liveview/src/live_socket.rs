@@ -3,6 +3,7 @@ use crate::{
     Changes, LiveViewRegistry, RenderedTemplate,
 };
 use actix::{Actor, ActorContext, AsyncContext, Handler, Message, Recipient, StreamHandler};
+use actix_web::HttpRequest;
 use actix_web_actors::ws;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
@@ -32,6 +33,16 @@ pub enum ClientMessage {
     Changes(Changes),
 }
 
+pub struct LiveSocketContext {
+    request: HttpRequest,
+}
+
+impl LiveSocketContext {
+    pub fn app_data<T: 'static>(&self) -> Option<&T> {
+        self.request.app_data()
+    }
+}
+
 // TODO: This might need to be an enum if we get more messages eventually.
 #[derive(Message, Debug, Serialize)]
 #[rtype(result = "()")]
@@ -41,6 +52,7 @@ pub struct SocketViewMessage {
 
 pub struct LiveSocket {
     registry: LiveViewRegistry,
+    context: LiveSocketContext,
     live_views: Vec<Recipient<LiveViewAction>>,
     heart_beat: Instant,
 }
@@ -83,10 +95,13 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for LiveSocket {
                 match message {
                     ServerMessage::SpawnLiveView { name } => {
                         let id = LiveViewId(self.live_views.len());
-                        let live_view = match self.registry.spawn(&name, id, ctx.address()) {
-                            Some(live_view) => live_view,
-                            None => return warn!("Live view with name {:?} not registered", name),
-                        };
+                        let live_view =
+                            match self.registry.spawn(&name, id, ctx.address(), &self.context) {
+                                Some(live_view) => live_view,
+                                None => {
+                                    return warn!("Live view with name {:?} not registered", name)
+                                }
+                            };
                         self.live_views.push(live_view);
                     }
                     ServerMessage::LiveView { id, action } => {
@@ -107,11 +122,12 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for LiveSocket {
 }
 
 impl LiveSocket {
-    pub fn new(registry: LiveViewRegistry) -> Self {
+    pub fn new(registry: LiveViewRegistry, request: HttpRequest) -> Self {
         Self {
             registry,
             heart_beat: Instant::now(),
             live_views: Vec::new(),
+            context: LiveSocketContext { request },
         }
     }
 

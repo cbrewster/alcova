@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate log;
 
+mod chat;
 mod fruit;
 mod timer;
 
@@ -8,6 +9,7 @@ use actix_files as fs;
 use actix_web::{middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder};
 use actix_web_actors::ws;
 use alcova_macros::LiveTemplate;
+use chat::{ChatLive, Lobby};
 use fruit::FruitLive;
 use listenfd::ListenFd;
 use liveview::{LiveSocket, LiveTemplate, LiveViewRegistry};
@@ -32,7 +34,7 @@ async fn ws_index(
     // TODO: Cleanup... Data gives us an Arc but we have an Arc in the Arc
     // Maybe just require making the registry inside HttpServer::new
     let registry = &*registry.into_inner();
-    let res = ws::start(LiveSocket::new(registry.clone()), &r, stream);
+    let res = ws::start(LiveSocket::new(registry.clone(), r.clone()), &r, stream);
     res
 }
 
@@ -55,11 +57,15 @@ async fn main() -> Result<(), std::io::Error> {
     let registry = LiveViewRegistry::builder()
         .register::<FruitLive>()
         .register::<TimerLive>()
+        .register::<ChatLive>()
         .build();
+
+    let chat_lobby = web::Data::new(Lobby::new());
 
     let mut server = HttpServer::new(move || {
         App::new()
             .data(registry.clone())
+            .app_data(chat_lobby.clone())
             // enable logger
             .wrap(middleware::Logger::default())
             // websocket route
@@ -67,6 +73,7 @@ async fn main() -> Result<(), std::io::Error> {
             .route("/", web::get().to(index))
             .configure(fruit::config)
             .configure(timer::config)
+            .configure(chat::config)
             // static files
             .service(fs::Files::new("/", "static/").index_file("index.html"))
     });

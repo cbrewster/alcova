@@ -3,5 +3,6 @@
 <ul class="list-disc text-lg font-medium">
     <li><a href="/fruit" class="text-blue-500 underline">Fruit Autocomplete Demo</a></li>
     <li><a href="/timer" class="text-blue-500 underline">Timer</a></li>
+    <li><a href="/chat" class="text-blue-500 underline">Chat</a></li>
 </ul>
 

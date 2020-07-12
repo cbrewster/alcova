@@ -1,0 +1,17 @@
+<h1 class="mt-4 text-xl font-bold text-gray-800 text-center">Chat Demo</h1>
+
+<input value="{{ @name }}" rs-change="name" placeholder="Name" type="text" class="mt-4 px-4 py-2 rounded shadow focus:outline-ingido-500" />
+
+<div class="mt-4 p-4 rounded-lg bg-white">
+<h2 class="text-gray-700 font-bold uppercase text-sm">Messages</h2>
+{{ for message in @messages }}
+<p class="text-lg font-medium">{{ message }}</p>
+{{ end }}
+</div>
+
+<div class="mt-8 w-full flex items-center">
+    <input value="{{ @new_message }}" rs-change="message" placeholder="Enter Message" type="text" class="px-4 py-2 flex-grow rounded shadow focus:outline-ingido-500" />
+    <button rs-click="send" class="ml-2 px-4 py-2 rounded bg-blue-400 hover:bg-blue-500 text-white font-bold shadow">
+        Send Message
+    </button>
+</div>

@@ -2,7 +2,7 @@ use crate::RootTemplate;
 use actix::{AsyncContext, SpawnHandle};
 use actix_web::{web, Responder};
 use alcova_macros::LiveTemplate;
-use liveview::{LiveTemplate, LiveView, LiveViewContext};
+use liveview::{LiveSocketContext, LiveTemplate, LiveView, LiveViewContext};
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, LiveTemplate, PartialEq)]
@@ -50,7 +50,7 @@ impl LiveView for TimerLive {
         "timer"
     }
 
-    fn mount() -> Self {
+    fn mount(_socket_ctx: &LiveSocketContext) -> Self {
         Self::new()
     }
 
