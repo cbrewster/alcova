@@ -1,10 +1,12 @@
 use crate::RootTemplate;
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, Recipient};
-use actix_web::{web, Responder};
+use actix_identity::Identity;
+use actix_web::{http, web, HttpRequest, Responder};
 use alcova_macros::LiveTemplate;
 use liveview::{
     LiveHandler, LiveMessage, LiveSocketContext, LiveTemplate, LiveView, LiveViewContext,
 };
+use serde::{Deserialize, Serialize};
 
 pub struct Lobby {
     room: Addr<ChatRoom>,
@@ -66,6 +68,15 @@ impl Handler<ChatMessage> for ChatRoom {
 }
 
 #[derive(Debug, Clone, LiveTemplate, PartialEq)]
+#[alcova(template = "templates/login.html.rlt")]
+struct LoginTemplate;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Session {
+    name: String,
+}
+
+#[derive(Debug, Clone, LiveTemplate, PartialEq)]
 #[alcova(template = "templates/chat.html.rlt")]
 pub struct ChatTemplate {
     messages: Vec<String>,
@@ -74,11 +85,11 @@ pub struct ChatTemplate {
 }
 
 impl ChatTemplate {
-    fn new() -> Self {
+    fn new(name: String) -> Self {
         Self {
             messages: Vec::new(),
             new_message: String::new(),
-            name: String::new(),
+            name,
         }
     }
 }
@@ -89,9 +100,9 @@ pub struct ChatLive {
 }
 
 impl ChatLive {
-    fn new(room: Addr<ChatRoom>) -> Self {
+    fn new(room: Addr<ChatRoom>, session: Session) -> Self {
         Self {
-            assigns: ChatTemplate::new(),
+            assigns: ChatTemplate::new(session.name),
             room,
         }
     }
@@ -105,15 +116,15 @@ impl LiveHandler<ChatMessage> for ChatLive {
 
 impl LiveView for ChatLive {
     type Template = ChatTemplate;
-    type SessionData = ();
+    type SessionData = Session;
 
     fn name() -> &'static str {
         "chat"
     }
 
-    fn mount(socket_ctx: &LiveSocketContext, _session: ()) -> Self {
+    fn mount(socket_ctx: &LiveSocketContext, session: Session) -> Self {
         let lobby = socket_ctx.app_data::<web::Data<Lobby>>().unwrap();
-        Self::new(lobby.room.clone())
+        Self::new(lobby.room.clone(), session)
     }
 
     fn started(&mut self, ctx: &mut LiveViewContext<Self>) {
@@ -125,9 +136,6 @@ impl LiveView for ChatLive {
         match event {
             "message" => {
                 self.assigns.new_message = value.into();
-            }
-            "name" => {
-                self.assigns.name = value.into();
             }
             "send" => {
                 let message = std::mem::replace(&mut self.assigns.new_message, String::new());
@@ -143,13 +151,83 @@ impl LiveView for ChatLive {
     }
 }
 
-async fn chat(lobby: web::Data<Lobby>) -> impl Responder {
-    let root_layout = RootTemplate {
-        inner: ChatLive::new(lobby.room.clone()).to_string(&()),
+async fn chat(id: Identity, lobby: web::Data<Lobby>, req: HttpRequest) -> impl Responder {
+    let name = match id.identity() {
+        Some(name) => name,
+        None => {
+            return web::HttpResponse::Found()
+                .set_header(
+                    http::header::LOCATION,
+                    req.url_for_static("chat-login").unwrap().to_string(),
+                )
+                .finish()
+        }
     };
-    root_layout.to_response()
+    let session = Session { name };
+
+    // TODO: Change API so session doesn't need to be cloned.
+    let root_layout = RootTemplate {
+        inner: ChatLive::new(lobby.room.clone(), session.clone()).to_string(&session),
+    };
+
+    web::HttpResponse::Ok().body(root_layout.to_string())
+}
+
+async fn login_form(id: Identity, req: HttpRequest) -> impl Responder {
+    if id.identity().is_some() {
+        return web::HttpResponse::Found()
+            .set_header(
+                http::header::LOCATION,
+                req.url_for_static("chat").unwrap().to_string(),
+            )
+            .finish();
+    }
+
+    let root_layout = RootTemplate {
+        inner: LoginTemplate.to_string(),
+    };
+
+    web::HttpResponse::Ok().body(root_layout.to_string())
+}
+
+#[derive(Deserialize)]
+struct FormData {
+    name: String,
+}
+
+async fn login(id: Identity, form: web::Form<FormData>, req: HttpRequest) -> impl Responder {
+    id.remember(form.name.to_string());
+
+    web::HttpResponse::Found()
+        .set_header(
+            http::header::LOCATION,
+            req.url_for_static("chat").unwrap().to_string(),
+        )
+        .finish()
+}
+
+async fn logout(id: Identity, req: HttpRequest) -> impl Responder {
+    id.forget();
+
+    web::HttpResponse::Found()
+        .set_header(
+            http::header::LOCATION,
+            req.url_for_static("chat-login").unwrap().to_string(),
+        )
+        .finish()
 }
 
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(web::resource("/chat").route(web::get().to(chat)));
+    cfg.service(
+        web::resource("/chat")
+            .name("chat")
+            .route(web::get().to(chat)),
+    );
+    cfg.service(
+        web::resource("/chat/login")
+            .name("chat-login")
+            .route(web::post().to(login))
+            .route(web::get().to(login_form)),
+    );
+    cfg.route("/chat/logout", web::get().to(logout));
 }

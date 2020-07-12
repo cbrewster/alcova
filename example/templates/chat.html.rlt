@@ -1,6 +1,6 @@
 <h1 class="mt-4 text-xl font-bold text-gray-800 text-center">Chat Demo</h1>
 
-<input value="{{ @name }}" rs-change="name" placeholder="Name" type="text" class="mt-4 px-4 py-2 rounded shadow focus:outline-ingido-500" />
+<h3 class="inline font-bold text-lg">Logged in as {{ @name }}</h3> <a href="/chat/logout" class="ml-2 inline-block px-4 py-2 rounded bg-blue-400 hover:bg-blue-500 text-white font-bold shadow">Log Out</a>
 
 <div class="mt-4 p-4 rounded-lg bg-white">
 <h2 class="text-gray-700 font-bold uppercase text-sm">Messages</h2>

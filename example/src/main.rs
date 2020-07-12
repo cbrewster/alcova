@@ -6,6 +6,7 @@ mod fruit;
 mod timer;
 
 use actix_files as fs;
+use actix_identity::{CookieIdentityPolicy, IdentityService};
 use actix_web::{middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder};
 use actix_web_actors::ws;
 use alcova_macros::LiveTemplate;
@@ -64,6 +65,11 @@ async fn main() -> Result<(), std::io::Error> {
 
     let mut server = HttpServer::new(move || {
         App::new()
+            .wrap(IdentityService::new(
+                CookieIdentityPolicy::new(&[0; 32])
+                    .name("auth-cookie")
+                    .secure(false),
+            ))
             .data(registry.clone())
             .app_data(chat_lobby.clone())
             // enable logger
