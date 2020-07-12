@@ -5,15 +5,10 @@ use crate::{
 use actix::{Actor, Addr, Context, Handler, Message};
 use actix_web::{HttpRequest, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
-use std::any::Any;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct LiveViewId(pub usize);
-
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct LiveViewMessage(pub Box<dyn Any + Send>);
 
 pub type LiveViewContext<T> = Context<LiveViewActor<T>>;
 
@@ -28,8 +23,6 @@ pub trait LiveView: Sized + Unpin + 'static {
 
     fn handle_event(&mut self, _event: &str, _value: &str, _ctx: &mut LiveViewContext<Self>) {}
 
-    fn handle_message(&mut self, _message: LiveViewMessage, _ctx: &mut LiveViewContext<Self>) {}
-
     fn template(&self) -> Self::Template;
 
     fn to_string(&self) -> String {
@@ -40,6 +33,8 @@ pub trait LiveView: Sized + Unpin + 'static {
         LiveViewResponse { live_view: self }
     }
 }
+
+pub trait LiveMessage: Message<Result = ()> {}
 
 pub struct LiveViewResponse<T> {
     live_view: T,
@@ -123,20 +118,22 @@ where
     }
 }
 
-impl<T> Handler<LiveViewMessage> for LiveViewActor<T>
+pub trait LiveHandler<M: LiveMessage>
 where
-    T: LiveView + Unpin + 'static,
+    Self: LiveView,
+{
+    fn handle(&mut self, msg: M, ctx: &mut LiveViewContext<Self>);
+}
+
+impl<T, M> Handler<M> for LiveViewActor<T>
+where
+    T: LiveView + Unpin + LiveHandler<M> + 'static,
+    M: LiveMessage,
 {
     type Result = ();
 
-    fn handle(&mut self, msg: LiveViewMessage, ctx: &mut Self::Context) -> Self::Result {
-        self.view.handle_message(msg, ctx);
+    fn handle(&mut self, msg: M, ctx: &mut Self::Context) -> Self::Result {
+        self.view.handle(msg, ctx);
         self.send_changes();
-    }
-}
-
-impl LiveViewMessage {
-    pub fn get<T: Any>(&self) -> Option<&T> {
-        self.0.downcast_ref()
     }
 }

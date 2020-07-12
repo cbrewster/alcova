@@ -2,7 +2,9 @@ use crate::RootTemplate;
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, Recipient};
 use actix_web::{web, Responder};
 use alcova_macros::LiveTemplate;
-use liveview::{LiveSocketContext, LiveTemplate, LiveView, LiveViewContext, LiveViewMessage};
+use liveview::{
+    LiveHandler, LiveMessage, LiveSocketContext, LiveTemplate, LiveView, LiveViewContext,
+};
 
 pub struct Lobby {
     room: Addr<ChatRoom>,
@@ -18,14 +20,16 @@ impl Lobby {
 
 #[derive(Message)]
 #[rtype(result = "()")]
-struct Subscribe(Recipient<LiveViewMessage>);
+struct Subscribe(Recipient<ChatMessage>);
 
 #[derive(Message, Clone)]
 #[rtype(result = "()")]
 struct ChatMessage(String);
 
+impl LiveMessage for ChatMessage {}
+
 struct ChatRoom {
-    subscribers: Vec<Recipient<LiveViewMessage>>,
+    subscribers: Vec<Recipient<ChatMessage>>,
 }
 
 impl ChatRoom {
@@ -54,8 +58,7 @@ impl Handler<ChatMessage> for ChatRoom {
     fn handle(&mut self, msg: ChatMessage, _ctx: &mut Self::Context) -> Self::Result {
         self.subscribers.retain(|sub| sub.connected());
         for subscriber in &self.subscribers {
-            let message = LiveViewMessage(Box::new(msg.clone()));
-            if let Err(_) = subscriber.do_send(message) {
+            if let Err(_) = subscriber.do_send(msg.clone()) {
                 warn!("Error sending message!");
             }
         }
@@ -94,6 +97,12 @@ impl ChatLive {
     }
 }
 
+impl LiveHandler<ChatMessage> for ChatLive {
+    fn handle(&mut self, msg: ChatMessage, _ctx: &mut LiveViewContext<Self>) {
+        self.assigns.messages.push(msg.0);
+    }
+}
+
 impl LiveView for ChatLive {
     type Template = ChatTemplate;
 
@@ -125,12 +134,6 @@ impl LiveView for ChatLive {
                     .do_send(ChatMessage(format!("{}: {}", self.assigns.name, message)));
             }
             event => warn!("Received unknown event: {}", event),
-        }
-    }
-
-    fn handle_message(&mut self, message: LiveViewMessage, _ctx: &mut LiveViewContext<Self>) {
-        if let Some(message) = message.get::<ChatMessage>() {
-            self.assigns.messages.push(message.0.clone());
         }
     }
 
