@@ -105,12 +105,13 @@ impl LiveHandler<ChatMessage> for ChatLive {
 
 impl LiveView for ChatLive {
     type Template = ChatTemplate;
+    type SessionData = ();
 
     fn name() -> &'static str {
         "chat"
     }
 
-    fn mount(socket_ctx: &LiveSocketContext) -> Self {
+    fn mount(socket_ctx: &LiveSocketContext, _session: ()) -> Self {
         let lobby = socket_ctx.app_data::<web::Data<Lobby>>().unwrap();
         Self::new(lobby.room.clone())
     }
@@ -144,7 +145,7 @@ impl LiveView for ChatLive {
 
 async fn chat(lobby: web::Data<Lobby>) -> impl Responder {
     let root_layout = RootTemplate {
-        inner: ChatLive::new(lobby.room.clone()).to_string(),
+        inner: ChatLive::new(lobby.room.clone()).to_string(&()),
     };
     root_layout.to_response()
 }

@@ -1,9 +1,10 @@
 use crate::{
     live_socket::LiveSocketContext,
-    live_view::{LiveViewAction, LiveViewActor, LiveViewId},
+    live_view::{signing_secret, Claims, LiveViewAction, LiveViewActor, LiveViewId},
     LiveSocket, LiveView,
 };
 use actix::{Actor, Addr, Recipient};
+use jsonwebtoken::{decode, DecodingKey, Validation};
 use std::{collections::HashMap, sync::Arc};
 
 trait LiveViewSpawner: Sync + Send {
@@ -12,6 +13,7 @@ trait LiveViewSpawner: Sync + Send {
         id: LiveViewId,
         socket: Addr<LiveSocket>,
         context: &LiveSocketContext,
+        session_data: &str,
     ) -> Recipient<LiveViewAction>;
 }
 
@@ -19,15 +21,21 @@ impl<F> LiveViewSpawner for F
 where
     F: Sync
         + Send
-        + for<'r> Fn(LiveViewId, Addr<LiveSocket>, &'r LiveSocketContext) -> Recipient<LiveViewAction>,
+        + for<'r> Fn(
+            LiveViewId,
+            Addr<LiveSocket>,
+            &'r LiveSocketContext,
+            &'r str,
+        ) -> Recipient<LiveViewAction>,
 {
     fn spawn<'a>(
         &self,
         id: LiveViewId,
         socket: Addr<LiveSocket>,
         ctx: &'a LiveSocketContext,
+        session_data: &'a str,
     ) -> Recipient<LiveViewAction> {
-        self(id, socket, ctx)
+        self(id, socket, ctx, session_data)
     }
 }
 
@@ -50,11 +58,20 @@ impl LiveViewRegistryBuilder {
     pub fn register<T: LiveView + Unpin + 'static>(mut self) -> Self {
         self.live_views.insert(
             T::name().into(),
-            Box::new(|id, socket, context: &LiveSocketContext| {
-                LiveViewActor::<T>::new(id, socket, context)
-                    .start()
-                    .recipient()
-            }),
+            Box::new(
+                |id, socket, context: &LiveSocketContext, session_data: &str| {
+                    let key = signing_secret();
+                    let token = decode::<Claims<_>>(
+                        session_data,
+                        &DecodingKey::from_secret(key.as_bytes()),
+                        &Validation::default(),
+                    )
+                    .expect("Failed to deserialize session data");
+                    LiveViewActor::<T>::new(id, socket, context, token.claims.data)
+                        .start()
+                        .recipient()
+                },
+            ),
         );
         self
     }
@@ -73,9 +90,10 @@ impl LiveViewRegistry {
         id: LiveViewId,
         socket: Addr<LiveSocket>,
         ctx: &LiveSocketContext,
+        session_data: &str,
     ) -> Option<Recipient<LiveViewAction>> {
         self.live_views
             .get(name.as_ref())
-            .map(|spawner| spawner.spawn(id, socket, ctx))
+            .map(|spawner| spawner.spawn(id, socket, ctx, session_data))
     }
 }

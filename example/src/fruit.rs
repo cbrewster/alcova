@@ -50,12 +50,13 @@ impl FruitLive {
 
 impl LiveView for FruitLive {
     type Template = FruitTemplate;
+    type SessionData = ();
 
     fn name() -> &'static str {
         "fruit"
     }
 
-    fn mount(_socket_ctx: &LiveSocketContext) -> Self {
+    fn mount(_socket_ctx: &LiveSocketContext, _session: ()) -> Self {
         Self::new()
     }
 
@@ -96,7 +97,7 @@ impl LiveView for FruitLive {
 
 async fn fruit() -> impl Responder {
     let root_layout = RootTemplate {
-        inner: FruitLive::new().to_string(),
+        inner: FruitLive::new().to_string(&()),
     };
     root_layout.to_response()
 }

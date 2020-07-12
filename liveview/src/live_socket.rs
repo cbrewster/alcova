@@ -17,7 +17,7 @@ const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
 #[derive(Debug, Deserialize)]
 pub enum ServerMessage {
     /// Start a new live view from the specified name.
-    SpawnLiveView { name: String },
+    SpawnLiveView { name: String, session: String },
     LiveView {
         id: LiveViewId,
         action: LiveViewAction,
@@ -93,15 +93,18 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for LiveSocket {
                 };
 
                 match message {
-                    ServerMessage::SpawnLiveView { name } => {
+                    ServerMessage::SpawnLiveView { name, session } => {
                         let id = LiveViewId(self.live_views.len());
-                        let live_view =
-                            match self.registry.spawn(&name, id, ctx.address(), &self.context) {
-                                Some(live_view) => live_view,
-                                None => {
-                                    return warn!("Live view with name {:?} not registered", name)
-                                }
-                            };
+                        let live_view = match self.registry.spawn(
+                            &name,
+                            id,
+                            ctx.address(),
+                            &self.context,
+                            &session,
+                        ) {
+                            Some(live_view) => live_view,
+                            None => return warn!("Live view with name {:?} not registered", name),
+                        };
                         self.live_views.push(live_view);
                     }
                     ServerMessage::LiveView { id, action } => {

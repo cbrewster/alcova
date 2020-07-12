@@ -13,12 +13,6 @@ pub struct TimerTemplate {
     duration: Duration,
 }
 
-#[derive(Message)]
-#[rtype(result = "()")]
-struct Tick;
-
-impl LiveMessage for Tick {}
-
 fn format_time(time: &Duration) -> String {
     let seconds = time.as_secs();
     let minutes = seconds / 60;
@@ -41,6 +35,12 @@ pub struct TimerLive {
     timer: Option<SpawnHandle>,
 }
 
+#[derive(Message)]
+#[rtype(result = "()")]
+struct Tick;
+
+impl LiveMessage for Tick {}
+
 impl LiveHandler<Tick> for TimerLive {
     fn handle(&mut self, _msg: Tick, _ctx: &mut LiveViewContext<Self>) {
         self.assigns.duration = self.started_at.elapsed();
@@ -59,12 +59,13 @@ impl TimerLive {
 
 impl LiveView for TimerLive {
     type Template = TimerTemplate;
+    type SessionData = ();
 
     fn name() -> &'static str {
         "timer"
     }
 
-    fn mount(_socket_ctx: &LiveSocketContext) -> Self {
+    fn mount(_socket_ctx: &LiveSocketContext, _session: ()) -> Self {
         Self::new()
     }
 
@@ -94,7 +95,7 @@ impl LiveView for TimerLive {
 
 async fn timer() -> impl Responder {
     let root_layout = RootTemplate {
-        inner: TimerLive::new().to_string(),
+        inner: TimerLive::new().to_string(&()),
     };
     root_layout.to_response()
 }

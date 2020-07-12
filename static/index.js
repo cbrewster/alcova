@@ -11,7 +11,8 @@ window.onload = () => {
         console.log("Connecting to live view...");
         ws.send(JSON.stringify({
             SpawnLiveView: {
-                name: root.getAttribute("rs-view") 
+                name: root.getAttribute("rs-view"),
+                session: root.getAttribute("rs-session")
             }
         }));
     };

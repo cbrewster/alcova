@@ -49,10 +49,11 @@ pub trait LiveTemplate: Sized {
         self.render().to_string()
     }
 
-    fn render_with_wrapper(&self, view: &str) -> String {
+    fn render_with_wrapper(&self, view: &str, session: &str) -> String {
         format!(
-            "<div id=\"rs-root\" rs-view=\"{}\">{}</div>",
+            "<div id=\"rs-root\" rs-view=\"{}\" rs-session=\"{}\">{}</div>",
             view,
+            session,
             self.to_string()
         )
     }

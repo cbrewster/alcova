@@ -4,7 +4,8 @@ use crate::{
 };
 use actix::{Actor, Addr, Context, Handler, Message};
 use actix_web::{HttpRequest, HttpResponse, Responder};
-use serde::{Deserialize, Serialize};
+use jsonwebtoken::{encode, EncodingKey, Header};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -12,12 +13,37 @@ pub struct LiveViewId(pub usize);
 
 pub type LiveViewContext<T> = Context<LiveViewActor<T>>;
 
+pub(crate) fn signing_secret() -> String {
+    std::env::var("ALCOVA_SECRET_KEY").unwrap_or_else(|_| {
+        warn!("No secret key set! Using unsecure default");
+        "secret".into()
+    })
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct Claims<T> {
+    exp: u64,
+    pub(crate) data: T,
+}
+
+impl<T> Claims<T> {
+    fn new(minutes: u64, data: T) -> Self {
+        let exp = std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + (minutes * 60);
+        Self { exp, data }
+    }
+}
+
 pub trait LiveView: Sized + Unpin + 'static {
     type Template: LiveTemplate + Unpin;
+    type SessionData: Serialize + DeserializeOwned;
 
     fn name() -> &'static str;
 
-    fn mount(socket_ctx: &LiveSocketContext) -> Self;
+    fn mount(socket_ctx: &LiveSocketContext, session: Self::SessionData) -> Self;
 
     fn started(&mut self, _ctx: &mut LiveViewContext<Self>) {}
 
@@ -25,19 +51,35 @@ pub trait LiveView: Sized + Unpin + 'static {
 
     fn template(&self) -> Self::Template;
 
-    fn to_string(&self) -> String {
-        self.template().render_with_wrapper(Self::name())
+    fn to_string(&self, session: &Self::SessionData) -> String {
+        let key = signing_secret();
+
+        // TODO: Not sure how we should handle tokens expiring.
+        let claims = Claims::new(60, session);
+
+        let token = encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(key.as_bytes()),
+        )
+        .unwrap();
+        self.template()
+            .render_with_wrapper(Self::name(), token.as_str())
     }
 
-    fn to_response(self) -> LiveViewResponse<Self> {
-        LiveViewResponse { live_view: self }
+    fn to_response(self, session: Self::SessionData) -> LiveViewResponse<Self> {
+        LiveViewResponse {
+            live_view: self,
+            session,
+        }
     }
 }
 
 pub trait LiveMessage: Message<Result = ()> {}
 
-pub struct LiveViewResponse<T> {
+pub struct LiveViewResponse<T: LiveView> {
     live_view: T,
+    session: T::SessionData,
 }
 
 impl<T> Responder for LiveViewResponse<T>
@@ -48,7 +90,7 @@ where
     type Future = futures::future::Ready<Result<HttpResponse, actix_web::Error>>;
 
     fn respond_to(self, _req: &HttpRequest) -> Self::Future {
-        let body = self.live_view.to_string();
+        let body = self.live_view.to_string(&self.session);
 
         // Create response and set content type
         futures::future::ready(Ok(HttpResponse::Ok().body(body)))
@@ -70,10 +112,15 @@ pub struct LiveViewActor<T: LiveView> {
 }
 
 impl<T: LiveView + Unpin + 'static> LiveViewActor<T> {
-    pub fn new(id: LiveViewId, socket: Addr<LiveSocket>, context: &LiveSocketContext) -> Self {
+    pub fn new(
+        id: LiveViewId,
+        socket: Addr<LiveSocket>,
+        context: &LiveSocketContext,
+        session: T::SessionData,
+    ) -> Self {
         LiveViewActor {
             id,
-            view: T::mount(context),
+            view: T::mount(context, session),
             socket,
             old_template: None,
         }
