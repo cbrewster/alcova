@@ -32,19 +32,14 @@ impl LiveMessage for Tick {}
 impl LiveHandler<Tick> for TopLive {
     fn handle(&mut self, _msg: Tick, _ctx: &mut LiveViewContext<Self>) {
         // Use "-l1" on mac
-        let mut top = std::process::Command::new("top")
+        let top = std::process::Command::new("top")
             .arg("-bn1")
             .env("TERM", "xterm")
             .stdout(Stdio::piped())
             .spawn()
             .expect("Failed to spawn top");
-        self.assigns.top.clear();
-        top.stdout
-            .as_mut()
-            .unwrap()
-            .read_to_string(&mut self.assigns.top)
-            .expect("Failed to read top");
-        top.kill().expect("Failed to kill top");
+        self.assigns.top = String::from_utf8(top.wait_with_output().expect("top failed").stdout)
+            .expect("top output not valid utf8");
     }
 }
 
