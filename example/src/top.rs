@@ -31,8 +31,9 @@ impl LiveMessage for Tick {}
 
 impl LiveHandler<Tick> for TopLive {
     fn handle(&mut self, _msg: Tick, _ctx: &mut LiveViewContext<Self>) {
+        // Use "-l1" on mac
         let mut top = std::process::Command::new("top")
-            .arg("-l1")
+            .arg("-n1")
             .stdout(Stdio::piped())
             .spawn()
             .expect("Failed to spawn top");
