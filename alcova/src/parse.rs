@@ -1,5 +1,10 @@
 use crate::ast::{CodeExpression, Expression, Pattern, Template, TypePath};
 
+/// A parser for Alcova templates.
+/// Supports a minimal subset of Rust-like syntax.
+///
+/// Based on parser combinators from: https://bodil.lol/parser-combinators/
+
 // These are special keywords used in the templating languages.
 // Keep track of them here so we don't parse an identifier that is a keyword.
 const KEYWORDS: &'static [&'static str] = &["if", "else", "for", "match", "end", "let"];
@@ -724,6 +729,8 @@ mod test {
         );
         assert_eq!(quoted_string().parse("no string"), Err("no string"));
     }
+
+    // TODO: Split this into a number of smaller tests
 
     #[test]
     fn test_template() {

@@ -11,9 +11,12 @@ use syn::{self, export::quote::format_ident, Lit, Meta, NestedMeta};
 #[proc_macro_error]
 #[proc_macro_derive(LiveTemplate, attributes(alcova))]
 pub fn live_template(input: TokenStream) -> TokenStream {
+    let now = std::time::Instant::now();
     let ast = syn::parse(input).unwrap();
 
-    impl_live_template(&ast)
+    let res = impl_live_template(&ast);
+    println!("Compiled template in {:?}", now.elapsed());
+    res
 }
 
 fn impl_live_template(ast: &syn::DeriveInput) -> TokenStream {
@@ -146,14 +149,12 @@ fn generate_code_expression(
         }
         CodeExpression::Call { on, params } => {
             let on = generate_code_expression(on, assignee);
-            let mut param_tokens = vec![];
-            for param in params {
-                let param = generate_code_expression(param, assignee);
-                param_tokens.extend(quote! { #param, });
-            }
-            let params: proc_macro2::TokenStream = param_tokens.into_iter().collect();
 
-            tokens.extend(quote! { #on(#params) });
+            let params = params
+                .iter()
+                .map(|param| generate_code_expression(param, assignee));
+
+            tokens.extend(quote! { #on( #( #params, )* ) });
         }
     }
 
@@ -161,17 +162,12 @@ fn generate_code_expression(
 }
 
 fn generate_type_path(type_path: &TypePath) -> proc_macro2::TokenStream {
-    let mut tokens: Vec<proc_macro2::TokenTree> = vec![];
+    let segments = type_path
+        .segments
+        .iter()
+        .map(|segment| format_ident!("{}", segment));
 
-    for (i, segment) in type_path.segments.iter().enumerate() {
-        let segment = format_ident!("{}", segment);
-        tokens.extend(quote! { #segment });
-        if i != type_path.segments.len() - 1 {
-            tokens.extend(quote! { :: });
-        }
-    }
-
-    tokens.into_iter().collect()
+    quote! { #( #segments )::* }
 }
 
 fn generate_pattern(pattern: &Pattern) -> proc_macro2::TokenStream {
@@ -184,10 +180,7 @@ fn generate_pattern(pattern: &Pattern) -> proc_macro2::TokenStream {
         }
         Pattern::Enum { type_path, fields } => {
             let type_path = generate_type_path(type_path);
-            let fields = fields
-                .iter()
-                .map(|pattern| generate_pattern(pattern))
-                .collect::<Vec<_>>();
+            let fields = fields.iter().map(|pattern| generate_pattern(pattern));
 
             tokens.extend(quote! {
                 #type_path (#( #fields,)*)
@@ -229,22 +222,14 @@ fn generate_expression(expression: &Expression, assignee: &str) -> proc_macro2::
         } => {
             let binding = format_ident!("{}", binding);
             let iterator = generate_code_expression(iterator, "self");
-            let mut body_tokens = vec![];
 
-            for child in body {
-                let child = generate_expression(child, "self");
-                body_tokens.extend(quote! {
-                    string.push_str(&#child);
-                });
-            }
-
-            let body: proc_macro2::TokenStream = body_tokens.into_iter().collect();
+            let body = body.iter().map(|child| generate_expression(child, "self"));
 
             tokens.extend(quote! {
                 {
                     let mut string = String::new();
                     for #binding in &#iterator {
-                        #body
+                        #( string.push_str(&#body); )*
                     }
                     string
                 }
@@ -256,35 +241,21 @@ fn generate_expression(expression: &Expression, assignee: &str) -> proc_macro2::
             false_arm,
         } => {
             let condition = generate_code_expression(condition, assignee);
-            let mut true_arm_tokens = vec![];
 
-            for child in true_arm {
-                let child = generate_expression(child, "self");
-                true_arm_tokens.extend(quote! {
-                    string.push_str(&#child);
-                });
-            }
-
-            let true_arm: proc_macro2::TokenStream = true_arm_tokens.into_iter().collect();
-
-            let mut false_arm_tokens = vec![];
-
-            for child in false_arm {
-                let child = generate_expression(child, "self");
-                false_arm_tokens.extend(quote! {
-                    string.push_str(&#child);
-                });
-            }
-
-            let false_arm: proc_macro2::TokenStream = false_arm_tokens.into_iter().collect();
+            let true_arm = true_arm
+                .iter()
+                .map(|expr| generate_expression(expr, "self"));
+            let false_arm = false_arm
+                .iter()
+                .map(|expr| generate_expression(expr, "self"));
 
             tokens.extend(quote! {
                 {
                     let mut string = String::new();
                     if #condition {
-                        #true_arm
+                        #( #true_arm )*
                     } else {
-                        #false_arm
+                        #( #false_arm )*
                     }
                     string
                 }
@@ -299,35 +270,20 @@ fn generate_expression(expression: &Expression, assignee: &str) -> proc_macro2::
             let pattern = generate_pattern(pattern);
             let data = generate_code_expression(data, assignee);
 
-            let mut true_arm_tokens = vec![];
-
-            for child in true_arm {
-                let child = generate_expression(child, "self");
-                true_arm_tokens.extend(quote! {
-                    string.push_str(&#child);
-                });
-            }
-
-            let true_arm: proc_macro2::TokenStream = true_arm_tokens.into_iter().collect();
-
-            let mut false_arm_tokens = vec![];
-
-            for child in false_arm {
-                let child = generate_expression(child, "self");
-                false_arm_tokens.extend(quote! {
-                    string.push_str(&#child);
-                });
-            }
-
-            let false_arm: proc_macro2::TokenStream = false_arm_tokens.into_iter().collect();
+            let true_arm = true_arm
+                .iter()
+                .map(|expr| generate_expression(expr, "self"));
+            let false_arm = false_arm
+                .iter()
+                .map(|expr| generate_expression(expr, "self"));
 
             tokens.extend(quote! {
                 {
                     let mut string = String::new();
                     if let #pattern = #data {
-                        #true_arm
+                        #( #true_arm )*
                     } else {
-                        #false_arm
+                        #( #false_arm )*
                     }
                     string
                 }
@@ -372,17 +328,14 @@ fn generate_changes(template: &alcova::Template) -> Result<proc_macro2::TokenStr
             continue;
         }
 
-        let mut conditional_tokens = vec![];
-        for (i, dep) in deps.iter().enumerate() {
-            let field = format_ident!("{}", dep);
-            conditional_tokens.extend(quote! {old_template.#field != self.#field});
-
-            if i != deps.len() - 1 {
-                conditional_tokens.extend(quote! { || });
-            }
-        }
-        let conditional: proc_macro2::TokenStream = conditional_tokens.into_iter().collect();
         let new_value = generate_expression(expression, "self");
+
+        let fields = deps.iter().map(|field| format_ident!("{}", field));
+
+        let conditional = quote! {
+            #( old_template.#fields != self.#fields )||*
+        };
+
         tokens.extend(quote! {
             if #conditional {
                 changes.push((#i, #new_value));
