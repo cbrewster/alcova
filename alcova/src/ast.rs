@@ -33,8 +33,12 @@ pub enum CodeExpression {
         left: Box<CodeExpression>,
         right: Box<CodeExpression>,
     },
+    ParenGroup {
+        on: Box<CodeExpression>,
+    },
+    // TODO: Maybe we should support all the different number variants.
     NumberLiteral {
-        value: i64,
+        value: f32,
     },
     StringLiteral {
         value: String,
@@ -77,9 +81,10 @@ impl From<&str> for BinaryOperator {
 impl CodeExpression {
     pub fn get_dependencies(&self) -> Vec<String> {
         match self {
-            CodeExpression::Ref { on } => on.get_dependencies(),
-            CodeExpression::Deref { on } => on.get_dependencies(),
-            CodeExpression::Not { on } => on.get_dependencies(),
+            CodeExpression::Ref { on }
+            | CodeExpression::Deref { on }
+            | CodeExpression::Not { on }
+            | CodeExpression::ParenGroup { on } => on.get_dependencies(),
             CodeExpression::Symbol { name, assigned } => {
                 if *assigned {
                     vec![name.clone()]

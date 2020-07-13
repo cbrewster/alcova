@@ -326,6 +326,7 @@ fn code<'a>() -> impl Parser<'a, CodeExpression> {
                 right(pair(space0(), literal("(")), whitespace_wrap(code())),
                 pair(literal(")"), space0()),
             )
+            .map(|expr| CodeExpression::ParenGroup { on: Box::new(expr) })
             .parse(input)
         };
 
@@ -556,7 +557,7 @@ fn literal<'a>(expected: &'static str) -> impl Parser<'a, &'static str> {
     }
 }
 
-fn number(input: &str) -> ParseResult<i64> {
+fn number(input: &str) -> ParseResult<f32> {
     let mut matched = String::new();
 
     let mut chars = input.chars();
@@ -1130,7 +1131,7 @@ mod test {
                                 name: "count".into(),
                                 assigned: true
                             }),
-                            right: Box::new(CodeExpression::NumberLiteral { value: 3 }),
+                            right: Box::new(CodeExpression::NumberLiteral { value: 3.0 }),
                         }),
                         true_arm: vec![],
                         false_arm: vec![],
@@ -1156,7 +1157,7 @@ mod test {
                                     name: "count".into(),
                                     assigned: true,
                                 }),
-                                right: Box::new(CodeExpression::NumberLiteral { value: 3 }),
+                                right: Box::new(CodeExpression::NumberLiteral { value: 3.0 }),
                             }),
                             right: Box::new(CodeExpression::BinOp {
                                 op: BinaryOperator::NotEq,

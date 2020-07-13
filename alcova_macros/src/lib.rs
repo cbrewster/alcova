@@ -142,6 +142,10 @@ fn generate_code_expression(
             let on = generate_code_expression(on, assignee);
             tokens.extend(quote! { !(#on) });
         }
+        CodeExpression::ParenGroup { on } => {
+            let on = generate_code_expression(on, assignee);
+            tokens.extend(quote! { ( #on ) });
+        }
         CodeExpression::NumberLiteral { value } => {
             tokens.extend(quote! { (#value).try_into().unwrap() });
         }
@@ -192,7 +196,7 @@ fn generate_code_expression(
             let right = generate_code_expression(right, assignee);
 
             tokens.extend(quote! {
-                (#left #op #right)
+                #left #op #right
             });
         }
     }
