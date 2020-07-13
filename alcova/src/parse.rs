@@ -382,7 +382,10 @@ fn string_literal<'a>() -> impl Parser<'a, CodeExpression> {
 }
 
 fn number_literal<'a>() -> impl Parser<'a, CodeExpression> {
-    number.map(|value| CodeExpression::NumberLiteral { value })
+    any_of!(
+        float.map(|value| CodeExpression::FloatLiteral { value }),
+        int.map(|value| CodeExpression::IntLiteral { value })
+    )
 }
 
 fn bool_literal<'a>() -> impl Parser<'a, CodeExpression> {
@@ -557,7 +560,7 @@ fn literal<'a>(expected: &'static str) -> impl Parser<'a, &'static str> {
     }
 }
 
-fn number(input: &str) -> ParseResult<f32> {
+fn float(input: &str) -> ParseResult<f32> {
     let mut matched = String::new();
 
     let mut chars = input.chars();
@@ -581,6 +584,30 @@ fn number(input: &str) -> ParseResult<f32> {
                 }
             }
             break;
+        } else {
+            return Err(input);
+        }
+    }
+
+    let number = matched.parse().expect("Failed to parse number");
+
+    let next_index = matched.len();
+    Ok((&input[next_index..], number))
+}
+
+fn int(input: &str) -> ParseResult<i64> {
+    let mut matched = String::new();
+
+    let mut chars = input.chars();
+
+    match chars.next() {
+        Some(next) if next.is_numeric() || next == '-' => matched.push(next),
+        _ => return Err(input),
+    }
+
+    while let Some(next) = chars.next() {
+        if next.is_numeric() {
+            matched.push(next);
         } else {
             break;
         }
@@ -1118,7 +1145,7 @@ mod test {
 
     #[test]
     fn test_bin_op() {
-        let result = parse_template().parse("{{ if @count > 3 }}{{ end }}");
+        let result = parse_template().parse("{{ if @count > 3.0 }}{{ end }}");
         assert_eq!(
             result,
             Ok((
@@ -1131,7 +1158,7 @@ mod test {
                                 name: "count".into(),
                                 assigned: true
                             }),
-                            right: Box::new(CodeExpression::NumberLiteral { value: 3.0 }),
+                            right: Box::new(CodeExpression::FloatLiteral { value: 3.0 }),
                         }),
                         true_arm: vec![],
                         false_arm: vec![],
@@ -1151,23 +1178,27 @@ mod test {
                     expressions: vec![Expression::If {
                         condition: Box::new(CodeExpression::BinOp {
                             op: BinaryOperator::And,
-                            left: Box::new(CodeExpression::BinOp {
-                                op: BinaryOperator::Gt,
-                                left: Box::new(CodeExpression::Symbol {
-                                    name: "count".into(),
-                                    assigned: true,
-                                }),
-                                right: Box::new(CodeExpression::NumberLiteral { value: 3.0 }),
+                            left: Box::new(CodeExpression::ParenGroup {
+                                on: Box::new(CodeExpression::BinOp {
+                                    op: BinaryOperator::Gt,
+                                    left: Box::new(CodeExpression::Symbol {
+                                        name: "count".into(),
+                                        assigned: true,
+                                    }),
+                                    right: Box::new(CodeExpression::IntLiteral { value: 3 }),
+                                })
                             }),
-                            right: Box::new(CodeExpression::BinOp {
-                                op: BinaryOperator::NotEq,
-                                left: Box::new(CodeExpression::Symbol {
-                                    name: "thing".into(),
-                                    assigned: true,
-                                }),
-                                right: Box::new(CodeExpression::StringLiteral {
-                                    value: "hello".into()
-                                }),
+                            right: Box::new(CodeExpression::ParenGroup {
+                                on: Box::new(CodeExpression::BinOp {
+                                    op: BinaryOperator::NotEq,
+                                    left: Box::new(CodeExpression::Symbol {
+                                        name: "thing".into(),
+                                        assigned: true,
+                                    }),
+                                    right: Box::new(CodeExpression::StringLiteral {
+                                        value: "hello".into()
+                                    }),
+                                })
                             }),
                         }),
                         true_arm: vec![],

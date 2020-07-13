@@ -146,7 +146,10 @@ fn generate_code_expression(
             let on = generate_code_expression(on, assignee);
             tokens.extend(quote! { ( #on ) });
         }
-        CodeExpression::NumberLiteral { value } => {
+        CodeExpression::IntLiteral { value } => {
+            tokens.extend(quote! { (#value).try_into().unwrap() });
+        }
+        CodeExpression::FloatLiteral { value } => {
             tokens.extend(quote! { (#value).try_into().unwrap() });
         }
         CodeExpression::StringLiteral { value } => {

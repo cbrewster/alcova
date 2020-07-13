@@ -33,11 +33,18 @@ pub enum CodeExpression {
         left: Box<CodeExpression>,
         right: Box<CodeExpression>,
     },
+    // TODO: Handle precedence ourselves.
+    // We don't do proper precedence handling.
+    // As long as we make sure to output the same Rust code as what we get, including paren
+    // groupings, rustc should handle the precedence for us.
     ParenGroup {
         on: Box<CodeExpression>,
     },
     // TODO: Maybe we should support all the different number variants.
-    NumberLiteral {
+    IntLiteral {
+        value: i64,
+    },
+    FloatLiteral {
         value: f32,
     },
     StringLiteral {
@@ -106,7 +113,8 @@ impl CodeExpression {
                 deps
             }
 
-            CodeExpression::NumberLiteral { .. }
+            CodeExpression::IntLiteral { .. }
+            | CodeExpression::FloatLiteral { .. }
             | CodeExpression::StringLiteral { .. }
             | CodeExpression::BoolLiteral { .. } => vec![],
         }
