@@ -28,7 +28,7 @@ window.onload = () => {
                 LiveView: {
                     id: liveViewId,
                     action: {
-                        action: field.getAttribute("rs-change"),
+                        action: e.target.getAttribute("rs-change"),
                         value: e.target.value,
                     },
                 }

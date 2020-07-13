@@ -11,12 +11,9 @@ use syn::{self, export::quote::format_ident, Lit, Meta, NestedMeta};
 #[proc_macro_error]
 #[proc_macro_derive(LiveTemplate, attributes(alcova))]
 pub fn live_template(input: TokenStream) -> TokenStream {
-    let now = std::time::Instant::now();
     let ast = syn::parse(input).unwrap();
 
-    let res = impl_live_template(&ast);
-    println!("Compiled template in {:?}", now.elapsed());
-    res
+    impl_live_template(&ast)
 }
 
 fn impl_live_template(ast: &syn::DeriveInput) -> TokenStream {
@@ -228,7 +225,7 @@ fn generate_expression(expression: &Expression, assignee: &str) -> proc_macro2::
             tokens.extend(quote! {
                 {
                     let mut string = String::new();
-                    for #binding in &#iterator {
+                    for #binding in #iterator {
                         #( string.push_str(&#body); )*
                     }
                     string

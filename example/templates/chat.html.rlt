@@ -4,7 +4,7 @@
 
 <div class="mt-4 p-4 rounded-lg bg-white">
 <h2 class="text-gray-700 font-bold uppercase text-sm">Messages</h2>
-{{ for message in @messages }}
+{{ for message in &@messages }}
 <p class="text-lg font-medium">{{ message }}</p>
 {{ end }}
 </div>
