@@ -73,6 +73,7 @@ fn code_block<'a>() -> impl Parser<'a, Expression> {
         for_expression(),
         if_let_expression(),
         if_expression(),
+        match_expression(),
         symbol_or_call
     )
 }
@@ -220,6 +221,45 @@ fn if_expression<'a>() -> impl Parser<'a, Expression> {
                 condition: Box::new(condition),
                 true_arm,
                 false_arm,
+            },
+        ))
+    }
+}
+
+fn match_arm<'a>() -> impl Parser<'a, (Pattern, Vec<Expression>)> {
+    move |input| {
+        let (input, _) = pair(literal("{{="), space0()).parse(input)?;
+
+        let (input, pattern) = pattern().parse(input)?;
+
+        let (input, _) = pair(space0(), literal("}}")).parse(input)?;
+
+        let (input, exprs) = zero_or_more(expression()).parse(input)?;
+
+        Ok((input, (pattern, exprs)))
+    }
+}
+
+fn match_expression<'a>() -> impl Parser<'a, Expression> {
+    move |input| {
+        let (input, _) =
+            all_of!(literal("{{"), space0(), literal("match"), space1()).parse(input)?;
+
+        let (input, data) = left(whitespace_wrap(code()), literal("}}")).parse(input)?;
+
+        let (input, arms) = one_or_more(whitespace_wrap(match_arm())).parse(input)?;
+
+        let (input, _) = pair(
+            pair(literal("{{"), whitespace_wrap(literal("end"))),
+            literal("}}"),
+        )
+        .parse(input)?;
+
+        Ok((
+            input,
+            Expression::Match {
+                data: Box::new(data),
+                arms,
             },
         ))
     }
@@ -909,6 +949,49 @@ mod test {
                         })
                     })],
                 }
+            ))
+        );
+    }
+
+    #[test]
+    fn test_match_expression() {
+        let result = parse_template()
+            .parse("{{ match thing }}{{= Some(a) }}{{ a }}{{= None }}None{{ end }}");
+
+        dbg!(&result);
+
+        assert_eq!(
+            result,
+            Ok((
+                "",
+                Template {
+                    expressions: vec![Expression::Match {
+                        data: Box::new(CodeExpression::Symbol {
+                            name: "thing".into(),
+                            assigned: false,
+                        }),
+                        arms: vec![
+                            (
+                                Pattern::Enum {
+                                    type_path: TypePath {
+                                        segments: vec!["Some".into()],
+                                    },
+                                    fields: vec![Pattern::Binding { name: "a".into() },],
+                                },
+                                vec![Expression::CodeBlock(CodeExpression::Symbol {
+                                    name: "a".into(),
+                                    assigned: false,
+                                },),],
+                            ),
+                            (
+                                Pattern::Binding {
+                                    name: "None".into()
+                                },
+                                vec![Expression::Literal("None".into(),),],
+                            ),
+                        ],
+                    },],
+                },
             ))
         );
     }

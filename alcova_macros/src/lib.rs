@@ -173,7 +173,7 @@ fn generate_pattern(pattern: &Pattern) -> proc_macro2::TokenStream {
     match pattern {
         Pattern::Binding { name } => {
             let name = format_ident!("{}", name);
-            tokens.extend(quote! { ref #name });
+            tokens.extend(quote! { #name });
         }
         Pattern::Enum { type_path, fields } => {
             let type_path = generate_type_path(type_path);
@@ -250,9 +250,9 @@ fn generate_expression(expression: &Expression, assignee: &str) -> proc_macro2::
                 {
                     let mut string = String::new();
                     if #condition {
-                        #( #true_arm )*
+                        #( string.push_str(&#true_arm) )*
                     } else {
-                        #( #false_arm )*
+                        #( string.push_str(&#false_arm) )*
                     }
                     string
                 }
@@ -278,10 +278,23 @@ fn generate_expression(expression: &Expression, assignee: &str) -> proc_macro2::
                 {
                     let mut string = String::new();
                     if let #pattern = #data {
-                        #( #true_arm )*
+                        #( string.push_str(&#true_arm) )*
                     } else {
-                        #( #false_arm )*
+                        #( string.push_str(&#false_arm) )*
                     }
+                    string
+                }
+            });
+        }
+        Expression::Match { data, arms } => {
+            let data = generate_code_expression(data, assignee);
+            let arms = arms.iter().map(|arm| generate_match_arm(arm, assignee));
+            tokens.extend(quote! {
+                {
+                    let mut string = String::new();
+                    match #data {
+                        #( #arms )*
+                    };
                     string
                 }
             });
@@ -289,6 +302,23 @@ fn generate_expression(expression: &Expression, assignee: &str) -> proc_macro2::
     }
 
     tokens.into_iter().collect()
+}
+
+fn generate_match_arm(
+    (pattern, expressions): &(Pattern, Vec<Expression>),
+    assignee: &str,
+) -> proc_macro2::TokenStream {
+    let pattern = generate_pattern(pattern);
+
+    let expressions = expressions
+        .iter()
+        .map(|expr| generate_expression(expr, assignee));
+
+    quote! {
+        #pattern => {
+            #( string.push_str(&#expressions); )*
+        },
+    }
 }
 
 fn generate_slots(template: &alcova::Template) -> Result<proc_macro2::TokenStream, &'static str> {
@@ -305,7 +335,8 @@ fn generate_slots(template: &alcova::Template) -> Result<proc_macro2::TokenStrea
             Expression::CodeBlock(_)
             | Expression::For { .. }
             | Expression::If { .. }
-            | Expression::IfLet { .. } => {
+            | Expression::IfLet { .. }
+            | Expression::Match { .. } => {
                 tokens.extend(quote! {
                     liveview::Slot::Dynamic(#value),
                 });

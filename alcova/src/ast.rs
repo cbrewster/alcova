@@ -46,6 +46,8 @@ impl CodeExpression {
     }
 }
 
+// TODO: All these Vec<Expression>s should be templates
+
 #[derive(Debug, PartialEq)]
 pub enum Expression {
     Literal(String),
@@ -65,6 +67,10 @@ pub enum Expression {
         data: Box<CodeExpression>,
         true_arm: Vec<Expression>,
         false_arm: Vec<Expression>,
+    },
+    Match {
+        data: Box<CodeExpression>,
+        arms: Vec<(Pattern, Vec<Expression>)>,
     },
 }
 
@@ -136,6 +142,15 @@ impl Expression {
                         .iter()
                         .flat_map(|expr| expr.get_dependencies().into_iter()),
                 );
+                deps
+            }
+            Expression::Match { data, arms } => {
+                let mut deps = data.get_dependencies();
+                for arm in arms {
+                    for expr in &arm.1 {
+                        deps.extend(expr.get_dependencies().into_iter());
+                    }
+                }
                 deps
             }
         }

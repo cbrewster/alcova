@@ -72,6 +72,10 @@ impl LiveView for TimerLive {
     fn handle_event(&mut self, event: &str, _value: &str, ctx: &mut LiveViewContext<Self>) {
         match event {
             "start" => {
+                if let Some(timer) = self.timer.take() {
+                    ctx.cancel_future(timer);
+                }
+
                 self.started_at = Instant::now();
 
                 let handle = ctx.run_interval(Duration::from_millis(10), |_actor, ctx| {
