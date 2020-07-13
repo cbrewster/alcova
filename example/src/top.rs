@@ -1,5 +1,5 @@
 use crate::RootTemplate;
-use actix::{Arbiter, AsyncContext, Message};
+use actix::{AsyncContext, Message};
 use actix_web::{web, Responder};
 use alcova_macros::LiveTemplate;
 use liveview::{
@@ -54,7 +54,7 @@ impl LiveHandler<Tick> for TopLive {
             addr.do_send(TopResult(res));
         };
 
-        Arbiter::spawn(execution);
+        ctx.spawn(actix::fut::wrap_future(execution));
     }
 }
 

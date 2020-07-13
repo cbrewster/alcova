@@ -1,6 +1,6 @@
 use crate::{
     live_socket::LiveSocketContext,
-    live_view::{signing_secret, Claims, LiveViewAction, LiveViewActor, LiveViewId},
+    live_view::{signing_secret, Claims, LiveViewActor, LiveViewId, LiveViewMessage},
     LiveSocket, LiveView,
 };
 use actix::{Actor, Addr, Recipient};
@@ -14,7 +14,7 @@ trait LiveViewSpawner: Sync + Send {
         socket: Addr<LiveSocket>,
         context: &LiveSocketContext,
         session_data: &str,
-    ) -> Recipient<LiveViewAction>;
+    ) -> Recipient<LiveViewMessage>;
 }
 
 impl<F> LiveViewSpawner for F
@@ -26,7 +26,7 @@ where
             Addr<LiveSocket>,
             &'r LiveSocketContext,
             &'r str,
-        ) -> Recipient<LiveViewAction>,
+        ) -> Recipient<LiveViewMessage>,
 {
     fn spawn<'a>(
         &self,
@@ -34,7 +34,7 @@ where
         socket: Addr<LiveSocket>,
         ctx: &'a LiveSocketContext,
         session_data: &'a str,
-    ) -> Recipient<LiveViewAction> {
+    ) -> Recipient<LiveViewMessage> {
         self(id, socket, ctx, session_data)
     }
 }
@@ -91,7 +91,7 @@ impl LiveViewRegistry {
         socket: Addr<LiveSocket>,
         ctx: &LiveSocketContext,
         session_data: &str,
-    ) -> Option<Recipient<LiveViewAction>> {
+    ) -> Option<Recipient<LiveViewMessage>> {
         self.live_views
             .get(name.as_ref())
             .map(|spawner| spawner.spawn(id, socket, ctx, session_data))

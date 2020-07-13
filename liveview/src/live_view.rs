@@ -2,7 +2,7 @@ use crate::{
     live_socket::{ClientMessage, LiveSocketContext, SocketViewMessage},
     LiveSocket, LiveTemplate,
 };
-use actix::{Actor, Addr, Context, Handler, Message};
+use actix::{Actor, ActorContext, Addr, Context, Handler, Message};
 use actix_web::{HttpRequest, HttpResponse, Responder};
 use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -99,6 +99,12 @@ where
 
 #[derive(Message, Debug, Deserialize)]
 #[rtype(result = "()")]
+pub enum LiveViewMessage {
+    ClientAction(LiveViewAction),
+    Stop,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct LiveViewAction {
     action: String,
     value: Option<String>,
@@ -152,16 +158,21 @@ where
     }
 }
 
-impl<T> Handler<LiveViewAction> for LiveViewActor<T>
+impl<T> Handler<LiveViewMessage> for LiveViewActor<T>
 where
     T: LiveView + Unpin + 'static,
 {
     type Result = ();
 
-    fn handle(&mut self, msg: LiveViewAction, ctx: &mut Self::Context) -> Self::Result {
-        let value = msg.value.unwrap_or(String::new());
-        self.view.handle_event(&msg.action, &value, ctx);
-        self.send_changes();
+    fn handle(&mut self, msg: LiveViewMessage, ctx: &mut Self::Context) -> Self::Result {
+        match msg {
+            LiveViewMessage::ClientAction(LiveViewAction { action, value }) => {
+                let value = value.unwrap_or(String::new());
+                self.view.handle_event(&action, &value, ctx);
+                self.send_changes();
+            }
+            LiveViewMessage::Stop => ctx.stop(),
+        }
     }
 }
 

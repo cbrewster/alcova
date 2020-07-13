@@ -1,5 +1,5 @@
 use crate::{
-    live_view::{LiveViewAction, LiveViewId},
+    live_view::{LiveViewAction, LiveViewId, LiveViewMessage},
     Changes, LiveViewRegistry, RenderedTemplate,
 };
 use actix::{Actor, ActorContext, AsyncContext, Handler, Message, Recipient, StreamHandler};
@@ -53,7 +53,7 @@ pub struct SocketViewMessage {
 pub struct LiveSocket {
     registry: LiveViewRegistry,
     context: LiveSocketContext,
-    live_views: Vec<Recipient<LiveViewAction>>,
+    live_views: Vec<Recipient<LiveViewMessage>>,
     heart_beat: Instant,
 }
 
@@ -63,6 +63,14 @@ impl Actor for LiveSocket {
     /// Method is called on actor start. We start the heartbeat process here.
     fn started(&mut self, ctx: &mut Self::Context) {
         self.hb(ctx);
+    }
+
+    fn stopped(&mut self, _ctx: &mut Self::Context) {
+        for view in &self.live_views {
+            if view.do_send(LiveViewMessage::Stop).is_err() {
+                warn!("An error occurred shutting down a live view");
+            }
+        }
     }
 }
 
@@ -108,7 +116,10 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for LiveSocket {
                         self.live_views.push(live_view);
                     }
                     ServerMessage::LiveView { id, action } => {
-                        if self.live_views[id.0].do_send(action).is_err() {
+                        if self.live_views[id.0]
+                            .do_send(LiveViewMessage::ClientAction(action))
+                            .is_err()
+                        {
                             warn!("An error occurred handling message");
                         }
                     }
