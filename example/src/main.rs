@@ -4,6 +4,7 @@ extern crate log;
 mod chat;
 mod fruit;
 mod timer;
+mod top;
 
 use actix_files as fs;
 use actix_identity::{CookieIdentityPolicy, IdentityService};
@@ -15,6 +16,7 @@ use fruit::FruitLive;
 use listenfd::ListenFd;
 use liveview::{LiveSocket, LiveTemplate, LiveViewRegistry};
 use timer::TimerLive;
+use top::TopLive;
 
 #[derive(LiveTemplate)]
 #[alcova(template = "templates/layout.html.rlt")]
@@ -59,6 +61,7 @@ async fn main() -> Result<(), std::io::Error> {
         .register::<FruitLive>()
         .register::<TimerLive>()
         .register::<ChatLive>()
+        .register::<TopLive>()
         .build();
 
     let chat_lobby = web::Data::new(Lobby::new());
@@ -80,6 +83,7 @@ async fn main() -> Result<(), std::io::Error> {
             .configure(fruit::config)
             .configure(timer::config)
             .configure(chat::config)
+            .configure(top::config)
             // static files
             .service(fs::Files::new("/", "static/").index_file("index.html"))
     });

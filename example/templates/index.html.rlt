@@ -4,5 +4,6 @@
     <li><a href="/fruit" class="text-blue-500 underline">Fruit Autocomplete Demo</a></li>
     <li><a href="/timer" class="text-blue-500 underline">Timer</a></li>
     <li><a href="/chat" class="text-blue-500 underline">Chat</a></li>
+    <li><a href="/top" class="text-blue-500 underline">Top</a></li>
 </ul>
 

@@ -1,0 +1,8 @@
+<h1 class="mt-4 text-xl font-bold text-gray-800 text-center">Top Demo</h1>
+
+
+<div class="mt-6 w-full overflow-x-scroll p-4 bg-black text-green-300 rounded">
+    <div class="whitespace-pre font-mono">
+        {{ @top }}
+    </div>
+</div>
