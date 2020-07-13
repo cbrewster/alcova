@@ -1,6 +1,8 @@
 extern crate proc_macro;
 
-use alcova::{parse_template, CodeExpression, Expression, Parser, Pattern, TypePath};
+use alcova::{
+    parse_template, BinaryOperator, CodeExpression, Expression, Parser, Pattern, TypePath,
+};
 use proc_macro::TokenStream;
 use proc_macro_error::{abort, proc_macro_error};
 use quote::quote;
@@ -95,6 +97,8 @@ fn impl_live_template(ast: &syn::DeriveInput) -> TokenStream {
         #[allow(unused_qualifications)]
         impl liveview::LiveTemplate for #name {
             fn render(&self) -> liveview::RenderedTemplate {
+                use std::convert::TryInto;
+
                 liveview::RenderedTemplate {
                     slots: vec![
                         #slots
@@ -103,6 +107,8 @@ fn impl_live_template(ast: &syn::DeriveInput) -> TokenStream {
             }
 
             fn changes(&self, old_template: &Self) -> liveview::Changes {
+                use std::convert::TryInto;
+
                 let mut changes = vec![];
 
                 #changes
@@ -128,6 +134,23 @@ fn generate_code_expression(
             let on = generate_code_expression(on, assignee);
             tokens.extend(quote! { &#on });
         }
+        CodeExpression::Deref { on } => {
+            let on = generate_code_expression(on, assignee);
+            tokens.extend(quote! { *#on });
+        }
+        CodeExpression::Not { on } => {
+            let on = generate_code_expression(on, assignee);
+            tokens.extend(quote! { !(#on) });
+        }
+        CodeExpression::NumberLiteral { value } => {
+            tokens.extend(quote! { (#value).try_into().unwrap() });
+        }
+        CodeExpression::StringLiteral { value } => {
+            tokens.extend(quote! { #value });
+        }
+        CodeExpression::BoolLiteral { value } => {
+            tokens.extend(quote! { #value });
+        }
         CodeExpression::Symbol { name, assigned } => {
             let name = format_ident!("{}", name);
             let name = if *assigned {
@@ -152,6 +175,25 @@ fn generate_code_expression(
                 .map(|param| generate_code_expression(param, assignee));
 
             tokens.extend(quote! { #on( #( #params, )* ) });
+        }
+        CodeExpression::BinOp { op, left, right } => {
+            let op = match op {
+                BinaryOperator::EqEq => quote! { == },
+                BinaryOperator::NotEq => quote! { != },
+                BinaryOperator::Le => quote! { <= },
+                BinaryOperator::Lt => quote! { < },
+                BinaryOperator::Ge => quote! { >= },
+                BinaryOperator::Gt => quote! { > },
+                BinaryOperator::And => quote! { && },
+                BinaryOperator::Or => quote! { || },
+            };
+
+            let left = generate_code_expression(left, assignee);
+            let right = generate_code_expression(right, assignee);
+
+            tokens.extend(quote! {
+                (#left #op #right)
+            });
         }
     }
 

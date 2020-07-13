@@ -1,5 +1,9 @@
 <h1 class="mt-4 text-xl font-bold text-gray-800">Rust LiveView Autocomplete</h1>
 
+{{ if true != !(@selected.len() > 3) }}
+    Well thats a lot of fruit!
+{{ end }}
+
 <h2 class="mt-4 font-bold text-xl text-gray-700">Fruit Cart</h2>
 <ul>
 {{ for fruit in &@selected }}

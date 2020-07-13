@@ -1,4 +1,4 @@
-use crate::ast::{CodeExpression, Expression, Pattern, Template, TypePath};
+use crate::ast::{BinaryOperator, CodeExpression, Expression, Pattern, Template, TypePath};
 
 /// A parser for Alcova templates.
 /// Supports a minimal subset of Rust-like syntax.
@@ -7,7 +7,8 @@ use crate::ast::{CodeExpression, Expression, Pattern, Template, TypePath};
 
 // These are special keywords used in the templating languages.
 // Keep track of them here so we don't parse an identifier that is a keyword.
-const KEYWORDS: &'static [&'static str] = &["if", "else", "for", "match", "end", "let"];
+const KEYWORDS: &'static [&'static str] =
+    &["if", "else", "for", "match", "end", "let", "true", "false"];
 
 macro_rules! any_of {
     ($($parser:expr),*) => {
@@ -304,15 +305,98 @@ fn for_expression<'a>() -> impl Parser<'a, Expression> {
     }
 }
 
-fn code<'a>() -> impl Parser<'a, CodeExpression> {
-    // Put in closure to not break rustc
-    let ref_parser = move |input| {
-        right(whitespace_wrap(literal("&")), code())
-            .map(|on| CodeExpression::Ref { on: Box::new(on) })
-            .parse(input)
-    };
+fn binary_operator<'a>() -> impl Parser<'a, &'static str> {
+    // TODO: Replace this with a more performant parser?
+    any_of!(
+        literal("=="),
+        literal("!="),
+        literal(">="),
+        literal(">"),
+        literal("<="),
+        literal("<"),
+        literal("&&"),
+        literal("||")
+    )
+}
 
-    any_of!(ref_parser, code_expr())
+fn code<'a>() -> impl Parser<'a, CodeExpression> {
+    move |input| {
+        let group_parser = move |input| {
+            left(
+                right(pair(space0(), literal("(")), whitespace_wrap(code())),
+                pair(literal(")"), space0()),
+            )
+            .parse(input)
+        };
+
+        let (mut input, mut expr) = any_of!(group_parser, ungrouped_code()).parse(input)?;
+
+        while let Ok((new_input, bin_op)) = whitespace_wrap(binary_operator()).parse(input) {
+            input = new_input;
+
+            let (new_input, right) = code().parse(input)?;
+            input = new_input;
+
+            expr = CodeExpression::BinOp {
+                left: Box::new(expr),
+                right: Box::new(right),
+                op: BinaryOperator::from(bin_op),
+            }
+        }
+        Ok((input, expr))
+    }
+}
+
+fn ungrouped_code<'a>() -> impl Parser<'a, CodeExpression> {
+    move |input| {
+        // Put in closure to not break rustc
+        let ref_parser = move |input| {
+            right(whitespace_wrap(literal("&")), code())
+                .map(|on| CodeExpression::Ref { on: Box::new(on) })
+                .parse(input)
+        };
+
+        let deref_parser = move |input| {
+            right(whitespace_wrap(literal("*")), code())
+                .map(|on| CodeExpression::Ref { on: Box::new(on) })
+                .parse(input)
+        };
+
+        let not_parser = move |input| {
+            right(whitespace_wrap(literal("!")), code())
+                .map(|on| CodeExpression::Not { on: Box::new(on) })
+                .parse(input)
+        };
+
+        let expr_parser = any_of!(deref_parser, ref_parser, not_parser, code_expr_or_literal());
+
+        let (input, expr) = expr_parser.parse(input)?;
+
+        Ok((input, expr))
+    }
+}
+
+fn string_literal<'a>() -> impl Parser<'a, CodeExpression> {
+    quoted_string().map(|value| CodeExpression::StringLiteral { value })
+}
+
+fn number_literal<'a>() -> impl Parser<'a, CodeExpression> {
+    number.map(|value| CodeExpression::NumberLiteral { value })
+}
+
+fn bool_literal<'a>() -> impl Parser<'a, CodeExpression> {
+    any_of!(literal("true"), literal("false")).map(|value| CodeExpression::BoolLiteral {
+        value: value == "true",
+    })
+}
+
+fn code_expr_or_literal<'a>() -> impl Parser<'a, CodeExpression> {
+    any_of!(
+        number_literal(),
+        string_literal(),
+        bool_literal(),
+        code_expr()
+    )
 }
 
 fn code_expr<'a>() -> impl Parser<'a, CodeExpression> {
@@ -462,14 +546,49 @@ impl<'a, Output> Parser<'a, Output> for BoxedParser<'a, Output> {
     }
 }
 
-fn literal<'a>(expected: &'static str) -> impl Parser<'a, ()> {
+fn literal<'a>(expected: &'static str) -> impl Parser<'a, &'static str> {
     move |input: &'a str| {
         if input.starts_with(expected) {
-            Ok((&input[expected.len()..], ()))
+            Ok((&input[expected.len()..], expected))
         } else {
             Err(input)
         }
     }
+}
+
+fn number(input: &str) -> ParseResult<i64> {
+    let mut matched = String::new();
+
+    let mut chars = input.chars();
+
+    match chars.next() {
+        Some(next) if next.is_numeric() || next == '-' => matched.push(next),
+        _ => return Err(input),
+    }
+
+    while let Some(next) = chars.next() {
+        if next.is_numeric() {
+            matched.push(next);
+        } else if next == '.' {
+            matched.push(next);
+
+            while let Some(next) = chars.next() {
+                if next.is_numeric() {
+                    matched.push(next);
+                } else {
+                    break;
+                }
+            }
+            break;
+        } else {
+            break;
+        }
+    }
+
+    let number = matched.parse().expect("Failed to parse number");
+
+    let next_index = matched.len();
+    Ok((&input[next_index..], number))
 }
 
 fn identifier(input: &str) -> ParseResult<String> {
@@ -626,7 +745,6 @@ where
     }
 }
 
-#[allow(unused)]
 fn quoted_string<'a>() -> impl Parser<'a, String> {
     map(
         right(
@@ -652,9 +770,9 @@ mod test {
     fn test_literals() {
         let literal_parser = literal("test");
 
-        assert_eq!(literal_parser.parse("test"), Ok(("", ())));
+        assert_eq!(literal_parser.parse("test"), Ok(("", "test")));
         assert_eq!(literal_parser.parse("nope"), Err("nope"));
-        assert_eq!(literal_parser.parse("test more"), Ok((" more", ())));
+        assert_eq!(literal_parser.parse("test more"), Ok((" more", "test")));
     }
 
     #[test]
@@ -674,10 +792,13 @@ mod test {
     fn test_pair() {
         let at_parser = pair(literal("@"), identifier);
 
-        assert_eq!(at_parser.parse("@name"), Ok(("", ((), "name".to_string()))));
+        assert_eq!(
+            at_parser.parse("@name"),
+            Ok(("", ("@", "name".to_string())))
+        );
         assert_eq!(
             at_parser.parse("@name more"),
-            Ok((" more", ((), "name".to_string())))
+            Ok((" more", ("@", "name".to_string())))
         );
         assert_eq!(at_parser.parse("nope"), Err("nope"));
     }
@@ -958,8 +1079,6 @@ mod test {
         let result = parse_template()
             .parse("{{ match thing }}{{= Some(a) }}{{ a }}{{= None }}None{{ end }}");
 
-        dbg!(&result);
-
         assert_eq!(
             result,
             Ok((
@@ -990,6 +1109,68 @@ mod test {
                                 vec![Expression::Literal("None".into(),),],
                             ),
                         ],
+                    },],
+                },
+            ))
+        );
+    }
+
+    #[test]
+    fn test_bin_op() {
+        let result = parse_template().parse("{{ if @count > 3 }}{{ end }}");
+        assert_eq!(
+            result,
+            Ok((
+                "",
+                Template {
+                    expressions: vec![Expression::If {
+                        condition: Box::new(CodeExpression::BinOp {
+                            op: BinaryOperator::Gt,
+                            left: Box::new(CodeExpression::Symbol {
+                                name: "count".into(),
+                                assigned: true
+                            }),
+                            right: Box::new(CodeExpression::NumberLiteral { value: 3 }),
+                        }),
+                        true_arm: vec![],
+                        false_arm: vec![],
+                    }],
+                }
+            ))
+        );
+
+        let result =
+            parse_template().parse("{{ if (@count > 3) && (@thing != \"hello\") }}{{ end }}");
+
+        assert_eq!(
+            result,
+            Ok((
+                "",
+                Template {
+                    expressions: vec![Expression::If {
+                        condition: Box::new(CodeExpression::BinOp {
+                            op: BinaryOperator::And,
+                            left: Box::new(CodeExpression::BinOp {
+                                op: BinaryOperator::Gt,
+                                left: Box::new(CodeExpression::Symbol {
+                                    name: "count".into(),
+                                    assigned: true,
+                                }),
+                                right: Box::new(CodeExpression::NumberLiteral { value: 3 }),
+                            }),
+                            right: Box::new(CodeExpression::BinOp {
+                                op: BinaryOperator::NotEq,
+                                left: Box::new(CodeExpression::Symbol {
+                                    name: "thing".into(),
+                                    assigned: true,
+                                }),
+                                right: Box::new(CodeExpression::StringLiteral {
+                                    value: "hello".into()
+                                }),
+                            }),
+                        }),
+                        true_arm: vec![],
+                        false_arm: vec![],
                     },],
                 },
             ))
