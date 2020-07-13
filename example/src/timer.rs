@@ -17,8 +17,8 @@ fn format_time(time: &Duration) -> String {
     let seconds = time.as_secs();
     let minutes = seconds / 60;
     let seconds = seconds % 60;
-    let millis = time.as_millis() % 1000;
-    format!("{:02}:{:02}.{:03}", minutes, seconds, millis)
+    let millis = (time.as_millis() % 1000) / 10;
+    format!("{:02}:{:02}.{:02}", minutes, seconds, millis)
 }
 
 impl TimerTemplate {
@@ -74,7 +74,7 @@ impl LiveView for TimerLive {
             "start" => {
                 self.started_at = Instant::now();
 
-                let handle = ctx.run_interval(Duration::from_millis(1), |_actor, ctx| {
+                let handle = ctx.run_interval(Duration::from_millis(10), |_actor, ctx| {
                     ctx.address().do_send(Tick);
                 });
                 self.timer = Some(handle);
