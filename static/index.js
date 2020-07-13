@@ -7,6 +7,35 @@ window.onload = () => {
 
     let root = document.querySelector("#rs-root");
 
+    root.onclick = (e) => {
+        console.log("Clicked");
+        if (e.target.getAttribute("rs-click")) {
+            ws.send(JSON.stringify({
+                LiveView: {
+                    id: liveViewId,
+                    action: {
+                        action: e.target.getAttribute("rs-click"),
+                        value: e.target.getAttribute("rs-value")
+                    },
+                }
+            }));
+        }
+    }
+
+    root.oninput = (e) => {
+        if (e.target.getAttribute("rs-change")) {
+            ws.send(JSON.stringify({
+                LiveView: {
+                    id: liveViewId,
+                    action: {
+                        action: field.getAttribute("rs-change"),
+                        value: e.target.value,
+                    },
+                }
+            }));
+        }
+    }
+
     ws.onopen = () => {
         console.log("Connecting to live view...");
         ws.send(JSON.stringify({
@@ -25,48 +54,18 @@ window.onload = () => {
         if (event.Template) {
             template = event.Template.template;
             liveViewId = event.Template.id;
-            update(ws, liveViewId, root, template);
+            update(root, template);
         }
         if (event.Changes) {
             applyChanges(template, event.Changes.changes);
-            update(ws, liveViewId, root, template);
+            update(root, template);
         }
     }
 };
 
-function update(ws, liveViewId, root, template) {
+function update(root, template) {
     morphdom(root, `<div id="rs-root">` + renderTemplate(template) + `</div>`, {
         childrenOnly: true
-    });
-
-    let clickers = document.querySelectorAll("[rs-click]");
-    clickers.forEach((clicker) => {
-        clicker.onclick = () => {
-            ws.send(JSON.stringify({
-                LiveView: {
-                    id: liveViewId,
-                    action: {
-                        action: clicker.getAttribute("rs-click"),
-                        value: clicker.getAttribute("rs-value")
-                    },
-                }
-            }));
-        }
-    });
-
-    let fields = document.querySelectorAll("[rs-change]");
-    fields.forEach((field) => {
-        field.oninput = (e) => {
-            ws.send(JSON.stringify({
-                LiveView: {
-                    id: liveViewId,
-                    action: {
-                        action: field.getAttribute("rs-change"),
-                        value: e.target.value,
-                    },
-                }
-            }));
-        }
     });
 }
 
