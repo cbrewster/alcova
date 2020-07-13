@@ -34,6 +34,7 @@ impl LiveHandler<Tick> for TopLive {
         // Use "-l1" on mac
         let mut top = std::process::Command::new("top")
             .arg("-n1")
+            .env("TERM", "xterm")
             .stdout(Stdio::piped())
             .spawn()
             .expect("Failed to spawn top");
