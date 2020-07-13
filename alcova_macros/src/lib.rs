@@ -124,6 +124,10 @@ fn generate_code_expression(
     let mut tokens: Vec<proc_macro2::TokenTree> = vec![];
 
     match expression {
+        CodeExpression::Ref { on } => {
+            let on = generate_code_expression(on, assignee);
+            tokens.extend(quote! { &#on });
+        }
         CodeExpression::Symbol { name, assigned } => {
             let name = format_ident!("{}", name);
             let name = if *assigned {
@@ -133,7 +137,7 @@ fn generate_code_expression(
                 quote! { #name }
             };
 
-            tokens.extend(quote! { #name })
+            tokens.extend(quote! { #name });
         }
         CodeExpression::Accessor { on, field } => {
             let on = generate_code_expression(on, assignee);
@@ -145,7 +149,7 @@ fn generate_code_expression(
             let mut param_tokens = vec![];
             for param in params {
                 let param = generate_code_expression(param, assignee);
-                param_tokens.extend(quote! { &#param, });
+                param_tokens.extend(quote! { #param, });
             }
             let params: proc_macro2::TokenStream = param_tokens.into_iter().collect();
 

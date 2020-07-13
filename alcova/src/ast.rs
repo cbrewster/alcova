@@ -1,6 +1,14 @@
+#[derive(Debug, PartialEq)]
+pub struct Template {
+    pub expressions: Vec<Expression>,
+}
+
 // TODO: Rename this to something that makes more sense
 #[derive(Debug, PartialEq)]
 pub enum CodeExpression {
+    Ref {
+        on: Box<CodeExpression>,
+    },
     Symbol {
         name: String,
         assigned: bool,
@@ -18,6 +26,7 @@ pub enum CodeExpression {
 impl CodeExpression {
     pub fn get_dependencies(&self) -> Vec<String> {
         match self {
+            CodeExpression::Ref { on } => on.get_dependencies(),
             CodeExpression::Symbol { name, assigned } => {
                 if *assigned {
                     vec![name.clone()]

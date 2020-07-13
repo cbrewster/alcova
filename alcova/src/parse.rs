@@ -1,5 +1,7 @@
-use crate::ast::{CodeExpression, Expression, Pattern, TypePath};
+use crate::ast::{CodeExpression, Expression, Pattern, Template, TypePath};
 
+// These are special keywords used in the templating languages.
+// Keep track of them here so we don't parse an identifier that is a keyword.
 const KEYWORDS: &'static [&'static str] = &["if", "else", "for", "match", "end", "let"];
 
 macro_rules! any_of {
@@ -29,15 +31,12 @@ macro_rules! all_of {
     };
 }
 
-#[derive(Debug, PartialEq)]
-pub struct Template {
-    pub expressions: Vec<Expression>,
-}
-
 pub fn parse_template<'a>() -> impl Parser<'a, Template> {
     zero_or_more(expression()).map(|expressions| Template { expressions })
 }
 
+// TODO: Possibly rename this to something else
+// These "expressions" output code that generates a slot in the template.
 fn expression<'a>() -> impl Parser<'a, Expression> {
     either(code_block(), text())
 }
@@ -261,6 +260,17 @@ fn for_expression<'a>() -> impl Parser<'a, Expression> {
 }
 
 fn code<'a>() -> impl Parser<'a, CodeExpression> {
+    // Put in closure to not break rustc
+    let ref_parser = move |input| {
+        right(whitespace_wrap(literal("&")), code())
+            .map(|on| CodeExpression::Ref { on: Box::new(on) })
+            .parse(input)
+    };
+
+    any_of!(ref_parser, code_expr())
+}
+
+fn code_expr<'a>() -> impl Parser<'a, CodeExpression> {
     whitespace_wrap(move |input| {
         let (mut remaining, mut left) = symbol().parse(input)?;
 
@@ -571,6 +581,7 @@ where
     }
 }
 
+#[allow(unused)]
 fn quoted_string<'a>() -> impl Parser<'a, String> {
     map(
         right(
@@ -867,6 +878,29 @@ mod test {
                             false_arm: vec![],
                         },
                     ]
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn test_template_ref() {
+        let result = parse_template().parse("{{ &@test.thing }}");
+
+        assert_eq!(
+            result,
+            Ok((
+                "",
+                Template {
+                    expressions: vec![Expression::CodeBlock(CodeExpression::Ref {
+                        on: Box::new(CodeExpression::Accessor {
+                            on: Box::new(CodeExpression::Symbol {
+                                name: "test".into(),
+                                assigned: true
+                            }),
+                            field: "thing".into()
+                        })
+                    })],
                 }
             ))
         );

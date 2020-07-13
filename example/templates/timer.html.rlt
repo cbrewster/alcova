@@ -1,7 +1,7 @@
 <h1 class="mt-4 text-xl font-bold text-gray-800 text-center">Timer Demo</h1>
 
 <div class="mx-auto w-64 bg-white rounded-lg text-center p-4">
-    <h1 class="text-3xl font-bold text-indigo-900 font-mono">{{ format_time(@duration) }}</h1>
+    <h1 class="text-3xl font-bold text-indigo-900 font-mono">{{ format_time(&@duration) }}</h1>
 
     <div class="flex items-center w-full mt-4">
         <button rs-click="start" class="mr-2 px-4 py-2 rounded bg-blue-400 hover:bg-blue-500 text-white font-bold shadow">
