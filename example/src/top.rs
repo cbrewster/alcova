@@ -1,11 +1,12 @@
 use crate::RootTemplate;
-use actix::{AsyncContext, Message};
+use actix::{Arbiter, AsyncContext, Message};
 use actix_web::{web, Responder};
 use alcova_macros::LiveTemplate;
 use liveview::{
     LiveHandler, LiveMessage, LiveSocketContext, LiveTemplate, LiveView, LiveViewContext,
 };
-use std::{io::Read, process::Stdio, time::Duration};
+use std::{process::Stdio, time::Duration};
+use tokio::process::Command;
 
 #[derive(Debug, Clone, LiveTemplate, PartialEq)]
 #[alcova(template = "templates/top.html.rlt")]
@@ -25,21 +26,41 @@ pub struct TopLive {
 
 #[derive(Message)]
 #[rtype(result = "()")]
+struct TopResult(String);
+
+impl LiveMessage for TopResult {}
+
+#[derive(Message)]
+#[rtype(result = "()")]
 struct Tick;
 
 impl LiveMessage for Tick {}
 
 impl LiveHandler<Tick> for TopLive {
-    fn handle(&mut self, _msg: Tick, _ctx: &mut LiveViewContext<Self>) {
-        // Use "-l1" on mac
-        let top = std::process::Command::new("top")
-            .arg("-bn1")
-            .env("TERM", "xterm")
-            .stdout(Stdio::piped())
-            .spawn()
-            .expect("Failed to spawn top");
-        self.assigns.top = String::from_utf8(top.wait_with_output().expect("top failed").stdout)
-            .expect("top output not valid utf8");
+    fn handle(&mut self, _msg: Tick, ctx: &mut LiveViewContext<Self>) {
+        let addr = ctx.address();
+
+        let execution = async move {
+            // Use "-l1" on mac
+            let top = Command::new("top")
+                .arg("-bn1")
+                .env("TERM", "xterm")
+                .stdout(Stdio::piped())
+                .spawn()
+                .expect("Failed to spawn top");
+
+            let res = String::from_utf8(top.wait_with_output().await.expect("top failed").stdout)
+                .expect("top output not valid utf8");
+            addr.do_send(TopResult(res));
+        };
+
+        Arbiter::spawn(execution);
+    }
+}
+
+impl LiveHandler<TopResult> for TopLive {
+    fn handle(&mut self, msg: TopResult, _ctx: &mut LiveViewContext<Self>) {
+        self.assigns.top = msg.0;
     }
 }
 
