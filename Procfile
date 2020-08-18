@@ -1,1 +1,1 @@
-web: ./target/release/example
+web: ./target/release/alcova_examples
