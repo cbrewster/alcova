@@ -13,7 +13,7 @@ struct Test {
 }
 
 #[derive(Debug, Clone, LiveTemplate, PartialEq)]
-#[alcova(template = "templates/fruit.html.rlt")]
+#[alcova(template = "templates/fruit.html.alcova")]
 pub struct FruitTemplate {
     options: Vec<String>,
     selected: Vec<String>,

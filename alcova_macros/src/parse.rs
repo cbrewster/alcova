@@ -359,7 +359,7 @@ fn ungrouped_code<'a>() -> impl Parser<'a, CodeExpression> {
 
         let deref_parser = move |input| {
             right(whitespace_wrap(literal("*")), code())
-                .map(|on| CodeExpression::Ref { on: Box::new(on) })
+                .map(|on| CodeExpression::Deref { on: Box::new(on) })
                 .parse(input)
         };
 

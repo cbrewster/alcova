@@ -8,7 +8,7 @@ use std::{process::Stdio, time::Duration};
 use tokio::process::Command;
 
 #[derive(Debug, Clone, LiveTemplate, PartialEq)]
-#[alcova(template = "templates/top.html.rlt")]
+#[alcova(template = "templates/top.html.alcova")]
 pub struct TopTemplate {
     top: String,
 }

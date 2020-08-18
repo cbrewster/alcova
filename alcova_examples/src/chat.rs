@@ -67,7 +67,7 @@ impl Handler<ChatMessage> for ChatRoom {
 }
 
 #[derive(Debug, Clone, LiveTemplate, PartialEq)]
-#[alcova(template = "templates/login.html.rlt")]
+#[alcova(template = "templates/login.html.alcova")]
 struct LoginTemplate;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,7 +76,7 @@ pub struct Session {
 }
 
 #[derive(Debug, Clone, LiveTemplate, PartialEq)]
-#[alcova(template = "templates/chat.html.rlt")]
+#[alcova(template = "templates/chat.html.alcova")]
 pub struct ChatTemplate {
     messages: Vec<String>,
     new_message: String,

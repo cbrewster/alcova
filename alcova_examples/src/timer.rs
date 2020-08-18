@@ -7,7 +7,7 @@ use alcova::{
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, LiveTemplate, PartialEq)]
-#[alcova(template = "templates/timer.html.rlt")]
+#[alcova(template = "templates/timer.html.alcova")]
 pub struct TimerTemplate {
     duration: Duration,
 }

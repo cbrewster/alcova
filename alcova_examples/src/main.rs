@@ -18,13 +18,13 @@ use timer::TimerLive;
 use top::TopLive;
 
 #[derive(LiveTemplate)]
-#[alcova(template = "templates/layout.html.rlt")]
+#[alcova(template = "templates/layout.html.alcova")]
 struct RootTemplate {
     inner: String,
 }
 
 #[derive(LiveTemplate)]
-#[alcova(template = "templates/index.html.rlt")]
+#[alcova(template = "templates/index.html.alcova")]
 struct IndexTemplate;
 
 /// do websocket handshake and start `MyWebSocket` actor
