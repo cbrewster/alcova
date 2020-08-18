@@ -1,8 +1,10 @@
 extern crate proc_macro;
 
-use alcova::{
-    parse_template, BinaryOperator, CodeExpression, Expression, Parser, Pattern, TypePath,
-};
+mod ast;
+mod parse;
+
+use ast::{BinaryOperator, CodeExpression, Expression, Pattern, Template, TypePath};
+use parse::{parse_template, Parser};
 use proc_macro::TokenStream;
 use proc_macro_error::{abort, proc_macro_error};
 use quote::quote;
@@ -95,25 +97,25 @@ fn impl_live_template(ast: &syn::DeriveInput) -> TokenStream {
 
         #[automatically_derived]
         #[allow(unused_qualifications)]
-        impl liveview::LiveTemplate for #name {
-            fn render(&self) -> liveview::RenderedTemplate {
+        impl alcova::LiveTemplate for #name {
+            fn render(&self) -> alcova::RenderedTemplate {
                 use std::convert::TryInto;
 
-                liveview::RenderedTemplate {
+                alcova::RenderedTemplate {
                     slots: vec![
                         #slots
                     ]
                 }
             }
 
-            fn changes(&self, old_template: &Self) -> liveview::Changes {
+            fn changes(&self, old_template: &Self) -> alcova::Changes {
                 use std::convert::TryInto;
 
                 let mut changes = vec![];
 
                 #changes
 
-                liveview::Changes { changes }
+                alcova::Changes { changes }
             }
         }
     };
@@ -370,7 +372,7 @@ fn generate_match_arm(
     }
 }
 
-fn generate_slots(template: &alcova::Template) -> Result<proc_macro2::TokenStream, &'static str> {
+fn generate_slots(template: &Template) -> Result<proc_macro2::TokenStream, &'static str> {
     let mut tokens: Vec<proc_macro2::TokenTree> = vec![];
 
     for expression in &template.expressions {
@@ -378,7 +380,7 @@ fn generate_slots(template: &alcova::Template) -> Result<proc_macro2::TokenStrea
         match expression {
             Expression::Literal(_) => {
                 tokens.extend(quote! {
-                    liveview::Slot::Static(#value),
+                    alcova::Slot::Static(#value),
                 });
             }
             Expression::CodeBlock(_)
@@ -387,7 +389,7 @@ fn generate_slots(template: &alcova::Template) -> Result<proc_macro2::TokenStrea
             | Expression::IfLet { .. }
             | Expression::Match { .. } => {
                 tokens.extend(quote! {
-                    liveview::Slot::Dynamic(#value),
+                    alcova::Slot::Dynamic(#value),
                 });
             }
         }
@@ -396,7 +398,7 @@ fn generate_slots(template: &alcova::Template) -> Result<proc_macro2::TokenStrea
     Ok(tokens.into_iter().collect())
 }
 
-fn generate_changes(template: &alcova::Template) -> Result<proc_macro2::TokenStream, &'static str> {
+fn generate_changes(template: &Template) -> Result<proc_macro2::TokenStream, &'static str> {
     let mut tokens: Vec<proc_macro2::TokenTree> = vec![];
 
     for (i, expression) in template.expressions.iter().enumerate() {

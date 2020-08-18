@@ -2,8 +2,7 @@ use crate::RootTemplate;
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, Recipient};
 use actix_identity::Identity;
 use actix_web::{http, web, HttpRequest, Responder};
-use alcova_macros::LiveTemplate;
-use liveview::{
+use alcova::{
     LiveHandler, LiveMessage, LiveSocketContext, LiveTemplate, LiveView, LiveViewContext,
 };
 use serde::{Deserialize, Serialize};

@@ -10,11 +10,10 @@ use actix_files as fs;
 use actix_identity::{CookieIdentityPolicy, IdentityService};
 use actix_web::{middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder};
 use actix_web_actors::ws;
-use alcova_macros::LiveTemplate;
+use alcova::{LiveSocket, LiveTemplate, LiveViewRegistry};
 use chat::{ChatLive, Lobby};
 use fruit::FruitLive;
 use listenfd::ListenFd;
-use liveview::{LiveSocket, LiveTemplate, LiveViewRegistry};
 use timer::TimerLive;
 use top::TopLive;
 

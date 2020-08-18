@@ -1,4 +1,4 @@
-<h1 class="mt-4 text-xl font-bold text-gray-800">Rust LiveView Autocomplete</h1>
+<h1 class="mt-4 text-xl font-bold text-gray-800">Alcova Autocomplete</h1>
 
 {{ if true != !(@selected.len() > 3) }}
     Well thats a lot of fruit!

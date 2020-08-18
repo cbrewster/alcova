@@ -1,4 +1,4 @@
-<h1 class="mt-4 text-xl font-bold text-gray-800">Rust LiveView Demos</h1>
+<h1 class="mt-4 text-xl font-bold text-gray-800">Alcova Demos</h1>
 
 <ul class="list-disc text-lg font-medium">
     <li><a href="/fruit" class="text-blue-500 underline">Fruit Autocomplete Demo</a></li>

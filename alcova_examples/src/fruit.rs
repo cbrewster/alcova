@@ -1,7 +1,6 @@
 use crate::RootTemplate;
 use actix_web::{web, Responder};
-use alcova_macros::LiveTemplate;
-use liveview::{LiveSocketContext, LiveTemplate, LiveView, LiveViewContext};
+use alcova::{LiveSocketContext, LiveTemplate, LiveView, LiveViewContext};
 
 fn fruits() -> Vec<&'static str> {
     include_str!("../fruits.txt").lines().collect()

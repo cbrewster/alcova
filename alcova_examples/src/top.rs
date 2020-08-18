@@ -1,8 +1,7 @@
 use crate::RootTemplate;
 use actix::{AsyncContext, Message};
 use actix_web::{web, Responder};
-use alcova_macros::LiveTemplate;
-use liveview::{
+use alcova::{
     LiveHandler, LiveMessage, LiveSocketContext, LiveTemplate, LiveView, LiveViewContext,
 };
 use std::{process::Stdio, time::Duration};

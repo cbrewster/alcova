@@ -1,13 +1,12 @@
 [package]
-name = "example"
+name = "alcova_examples"
 version = "0.1.0"
-authors = ["Connor Brewster <connor.brewster@eagles.oc.edu>"]
+authors = ["Connor Brewster <cbrewster@hey.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-liveview = { path = "../liveview" }
 alcova = { path = "../alcova" }
 alcova_macros = { path = "../alcova_macros" }
 actix = "0.9.0"

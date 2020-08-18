@@ -2,6 +2,5 @@
 members = [
     "./alcova",
     "./alcova_macros",
-    "./example",
-    "./liveview",
+    "./alcova_examples",
 ]

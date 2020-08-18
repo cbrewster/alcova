@@ -4,8 +4,8 @@
 <head>
   <meta charset="utf-8">
 
-  <title>Rust LiveView Demo</title>
-  <meta name="description" content="Rust LiveView">
+  <title>Alcova Demo</title>
+  <meta name="description" content="Alcova Demo">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link href="https://unpkg.com/tailwindcss@^1.0/dist/tailwind.min.css" rel="stylesheet">
