@@ -8,7 +8,6 @@ window.onload = () => {
     let root = document.querySelector("#rs-root");
 
     root.onclick = (e) => {
-        console.log("Clicked");
         if (e.target.getAttribute("rs-click")) {
             ws.send(JSON.stringify({
                 LiveView: {
@@ -30,6 +29,22 @@ window.onload = () => {
                     action: {
                         action: e.target.getAttribute("rs-change"),
                         value: e.target.value,
+                    },
+                }
+            }));
+        }
+    }
+
+    root.onsubmit = (e) => {
+        if (e.target.getAttribute("rs-submit")) {
+            e.preventDefault();
+            const formJson = JSON.stringify(formDataToJson(e.target));
+            ws.send(JSON.stringify({
+                LiveView: {
+                    id: liveViewId,
+                    action: {
+                        action: e.target.getAttribute("rs-submit"),
+                        value: formJson,
                     },
                 }
             }));
@@ -62,6 +77,17 @@ window.onload = () => {
         }
     }
 };
+
+function formDataToJson(formElement) {
+    const formData = new FormData(formElement).entries();
+
+    let jsonObject = {};
+
+    for (const [key, value]  of formData) {
+        jsonObject[key] = value;
+    }
+    return jsonObject;
+}
 
 function update(root, template) {
     morphdom(root, `<div id="rs-root">${renderTemplate(template)}</div>`, {

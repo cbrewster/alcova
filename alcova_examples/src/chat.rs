@@ -79,7 +79,6 @@ pub struct Session {
 #[alcova(template = "templates/chat.html.alcova")]
 pub struct ChatTemplate {
     messages: Vec<String>,
-    new_message: String,
     name: String,
 }
 
@@ -87,7 +86,6 @@ impl ChatTemplate {
     fn new(name: String) -> Self {
         Self {
             messages: Vec::new(),
-            new_message: String::new(),
             name,
         }
     }
@@ -113,6 +111,11 @@ impl LiveHandler<ChatMessage> for ChatLive {
     }
 }
 
+#[derive(Deserialize, Debug)]
+struct SendEvent {
+    message: String,
+}
+
 impl LiveView for ChatLive {
     type Template = ChatTemplate;
     type SessionData = Session;
@@ -133,11 +136,13 @@ impl LiveView for ChatLive {
 
     fn handle_event(&mut self, event: &str, value: &str, _ctx: &mut LiveViewContext<Self>) {
         match event {
-            "message" => {
-                self.assigns.new_message = value.into();
-            }
             "send" => {
-                let message = std::mem::replace(&mut self.assigns.new_message, String::new());
+                let data: SendEvent = serde_json::from_str(value).unwrap();
+                let message = data.message.trim();
+                if message.is_empty() {
+                    return;
+                }
+
                 self.room
                     .do_send(ChatMessage(format!("{}: {}", self.assigns.name, message)));
             }
