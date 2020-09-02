@@ -31,7 +31,8 @@ impl std::fmt::Display for RenderedTemplate {
 #[derive(Debug, Serialize)]
 pub struct Changes {
     /// Changes to the rendered template.
-    /// Changes are a tuple where the first element is the index of the dynamic slot.
+    /// Changes are a tuple where the first element is the index of the dynamic slot and the second
+    /// element is the new data for the slot.
     pub changes: Vec<(usize, String)>,
 }
 

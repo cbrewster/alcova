@@ -6,19 +6,12 @@ fn fruits() -> Vec<&'static str> {
     include_str!("../fruits.txt").lines().collect()
 }
 
-#[derive(Debug, Clone, PartialEq)]
-struct Test {
-    name: String,
-    option: Option<String>,
-}
-
 #[derive(Debug, Clone, LiveTemplate, PartialEq)]
 #[alcova(template = "templates/fruit.html.alcova")]
 pub struct FruitTemplate {
     options: Vec<String>,
     selected: Vec<String>,
     search: String,
-    test: Test,
 }
 
 impl FruitTemplate {
@@ -27,10 +20,6 @@ impl FruitTemplate {
             options: Vec::new(),
             selected: Vec::new(),
             search: String::new(),
-            test: Test {
-                name: "Connor".into(),
-                option: Some("Hello".into()),
-            },
         }
     }
 }

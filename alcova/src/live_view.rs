@@ -54,7 +54,8 @@ pub trait LiveView: Sized + Unpin + 'static {
     fn to_string(&self, session: &Self::SessionData) -> String {
         let key = signing_secret();
 
-        // TODO: Not sure how we should handle tokens expiring.
+        // TODO: Not sure how we should handle tokens expiring. Maybe reload the page on the
+        // client?
         let claims = Claims::new(60, session);
 
         let token = encode(
