@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOperator, CodeExpression, Expression, Pattern, Template, TypePath};
+use crate::ast::{BinaryOperator, Expression, Pattern, Template, TemplateBlock, TypePath};
 
 /// A parser for Alcova templates.
 /// Supports a minimal subset of Rust-like syntax.
@@ -38,16 +38,14 @@ macro_rules! all_of {
 }
 
 pub fn parse_template<'a>() -> impl Parser<'a, Template> {
-    zero_or_more(expression()).map(|expressions| Template { expressions })
+    zero_or_more(template_block()).map(|expressions| Template { expressions })
 }
 
-// TODO: Possibly rename this to something else
-// These "expressions" output code that generates a slot in the template.
-fn expression<'a>() -> impl Parser<'a, Expression> {
-    either(code_block(), text())
+fn template_block<'a>() -> impl Parser<'a, TemplateBlock> {
+    either(template_expression(), template_text_literal())
 }
 
-fn text<'a>() -> impl Parser<'a, Expression> {
+fn template_text_literal<'a>() -> impl Parser<'a, TemplateBlock> {
     move |input: &'a str| {
         let end = match input.find("{{") {
             Some(pos) => pos,
@@ -58,15 +56,15 @@ fn text<'a>() -> impl Parser<'a, Expression> {
             return Err(input);
         }
 
-        let expression = Expression::Literal(input[..end].to_string());
+        let expression = TemplateBlock::Literal(input[..end].to_string());
         Ok((&input[end..], expression))
     }
 }
 
-fn code_block<'a>() -> impl Parser<'a, Expression> {
+fn template_expression<'a>() -> impl Parser<'a, TemplateBlock> {
     let symbol_or_call = move |input| {
-        right(literal("{{"), left(code(), literal("}}")))
-            .map(|code| Expression::CodeBlock(code))
+        right(literal("{{"), left(expression(), literal("}}")))
+            .map(|code| TemplateBlock::Expression(code))
             .parse(input)
     };
 
@@ -134,7 +132,7 @@ fn pattern<'a>() -> impl Parser<'a, Pattern> {
     any_of!(struct_or_enum, binding)
 }
 
-fn if_let_expression<'a>() -> impl Parser<'a, Expression> {
+fn if_let_expression<'a>() -> impl Parser<'a, TemplateBlock> {
     move |input| {
         let (input, _) = all_of!(
             literal("{{"),
@@ -150,11 +148,11 @@ fn if_let_expression<'a>() -> impl Parser<'a, Expression> {
 
         let (input, _) = whitespace_wrap(literal("=")).parse(input)?;
 
-        let (input, data) = code().parse(input)?;
+        let (input, data) = expression().parse(input)?;
 
         let (input, _) = pair(space0(), literal("}}")).parse(input)?;
 
-        let (input, true_arm) = zero_or_more(expression()).parse(input)?;
+        let (input, true_arm) = zero_or_more(template_block()).parse(input)?;
 
         let (input, false_arm) = if let Ok((input, _)) = pair(
             pair(literal("{{"), whitespace_wrap(literal("else"))),
@@ -162,7 +160,7 @@ fn if_let_expression<'a>() -> impl Parser<'a, Expression> {
         )
         .parse(input)
         {
-            zero_or_more(expression()).parse(input)?
+            zero_or_more(template_block()).parse(input)?
         } else {
             (input, vec![])
         };
@@ -175,7 +173,7 @@ fn if_let_expression<'a>() -> impl Parser<'a, Expression> {
 
         Ok((
             input,
-            Expression::IfLet {
+            TemplateBlock::IfLet {
                 pattern,
                 data: Box::new(data),
                 true_arm,
@@ -185,7 +183,7 @@ fn if_let_expression<'a>() -> impl Parser<'a, Expression> {
     }
 }
 
-fn if_expression<'a>() -> impl Parser<'a, Expression> {
+fn if_expression<'a>() -> impl Parser<'a, TemplateBlock> {
     move |input| {
         let (input, _) = pair(literal("{{"), space0()).parse(input)?;
 
@@ -193,11 +191,11 @@ fn if_expression<'a>() -> impl Parser<'a, Expression> {
 
         let (input, _) = space1().parse(input)?;
 
-        let (input, condition) = code().parse(input)?;
+        let (input, condition) = expression().parse(input)?;
 
         let (input, _) = pair(space0(), literal("}}")).parse(input)?;
 
-        let (input, true_arm) = zero_or_more(expression()).parse(input)?;
+        let (input, true_arm) = zero_or_more(template_block()).parse(input)?;
 
         let (input, false_arm) = if let Ok((input, _)) = pair(
             pair(literal("{{"), whitespace_wrap(literal("else"))),
@@ -205,7 +203,7 @@ fn if_expression<'a>() -> impl Parser<'a, Expression> {
         )
         .parse(input)
         {
-            zero_or_more(expression()).parse(input)?
+            zero_or_more(template_block()).parse(input)?
         } else {
             (input, vec![])
         };
@@ -218,7 +216,7 @@ fn if_expression<'a>() -> impl Parser<'a, Expression> {
 
         Ok((
             input,
-            Expression::If {
+            TemplateBlock::If {
                 condition: Box::new(condition),
                 true_arm,
                 false_arm,
@@ -227,7 +225,7 @@ fn if_expression<'a>() -> impl Parser<'a, Expression> {
     }
 }
 
-fn match_arm<'a>() -> impl Parser<'a, (Pattern, Vec<Expression>)> {
+fn match_arm<'a>() -> impl Parser<'a, (Pattern, Vec<TemplateBlock>)> {
     move |input| {
         let (input, _) = pair(literal("{{="), space0()).parse(input)?;
 
@@ -235,18 +233,18 @@ fn match_arm<'a>() -> impl Parser<'a, (Pattern, Vec<Expression>)> {
 
         let (input, _) = pair(space0(), literal("}}")).parse(input)?;
 
-        let (input, exprs) = zero_or_more(expression()).parse(input)?;
+        let (input, exprs) = zero_or_more(template_block()).parse(input)?;
 
         Ok((input, (pattern, exprs)))
     }
 }
 
-fn match_expression<'a>() -> impl Parser<'a, Expression> {
+fn match_expression<'a>() -> impl Parser<'a, TemplateBlock> {
     move |input| {
         let (input, _) =
             all_of!(literal("{{"), space0(), literal("match"), space1()).parse(input)?;
 
-        let (input, data) = left(whitespace_wrap(code()), literal("}}")).parse(input)?;
+        let (input, data) = left(whitespace_wrap(expression()), literal("}}")).parse(input)?;
 
         let (input, arms) = one_or_more(whitespace_wrap(match_arm())).parse(input)?;
 
@@ -258,7 +256,7 @@ fn match_expression<'a>() -> impl Parser<'a, Expression> {
 
         Ok((
             input,
-            Expression::Match {
+            TemplateBlock::Match {
                 data: Box::new(data),
                 arms,
             },
@@ -266,7 +264,7 @@ fn match_expression<'a>() -> impl Parser<'a, Expression> {
     }
 }
 
-fn for_expression<'a>() -> impl Parser<'a, Expression> {
+fn for_expression<'a>() -> impl Parser<'a, TemplateBlock> {
     move |input| {
         let (input, _) = pair(literal("{{"), space0()).parse(input)?;
 
@@ -282,11 +280,11 @@ fn for_expression<'a>() -> impl Parser<'a, Expression> {
 
         let (input, _) = space1().parse(input)?;
 
-        let (input, iterator) = code().parse(input)?;
+        let (input, iterator) = expression().parse(input)?;
 
         let (input, _) = pair(space0(), literal("}}")).parse(input)?;
 
-        let (input, body) = zero_or_more(expression()).parse(input)?;
+        let (input, body) = zero_or_more(template_block()).parse(input)?;
 
         let (input, _) = pair(
             pair(literal("{{"), whitespace_wrap(literal("end"))),
@@ -296,7 +294,7 @@ fn for_expression<'a>() -> impl Parser<'a, Expression> {
 
         Ok((
             input,
-            Expression::For {
+            TemplateBlock::For {
                 binding,
                 iterator: Box::new(iterator),
                 body,
@@ -319,26 +317,26 @@ fn binary_operator<'a>() -> impl Parser<'a, &'static str> {
     )
 }
 
-fn code<'a>() -> impl Parser<'a, CodeExpression> {
+fn expression<'a>() -> impl Parser<'a, Expression> {
     move |input| {
         let group_parser = move |input| {
             left(
-                right(pair(space0(), literal("(")), whitespace_wrap(code())),
+                right(pair(space0(), literal("(")), whitespace_wrap(expression())),
                 pair(literal(")"), space0()),
             )
-            .map(|expr| CodeExpression::ParenGroup { on: Box::new(expr) })
+            .map(|expr| Expression::ParenGroup { on: Box::new(expr) })
             .parse(input)
         };
 
-        let (mut input, mut expr) = any_of!(group_parser, ungrouped_code()).parse(input)?;
+        let (mut input, mut expr) = any_of!(group_parser, ungrouped_expression()).parse(input)?;
 
         while let Ok((new_input, bin_op)) = whitespace_wrap(binary_operator()).parse(input) {
             input = new_input;
 
-            let (new_input, right) = code().parse(input)?;
+            let (new_input, right) = expression().parse(input)?;
             input = new_input;
 
-            expr = CodeExpression::BinOp {
+            expr = Expression::BinOp {
                 left: Box::new(expr),
                 right: Box::new(right),
                 op: BinaryOperator::from(bin_op),
@@ -348,24 +346,24 @@ fn code<'a>() -> impl Parser<'a, CodeExpression> {
     }
 }
 
-fn ungrouped_code<'a>() -> impl Parser<'a, CodeExpression> {
+fn ungrouped_expression<'a>() -> impl Parser<'a, Expression> {
     move |input| {
         // Put in closure to not break rustc
         let ref_parser = move |input| {
-            right(whitespace_wrap(literal("&")), code())
-                .map(|on| CodeExpression::Ref { on: Box::new(on) })
+            right(whitespace_wrap(literal("&")), expression())
+                .map(|on| Expression::Ref { on: Box::new(on) })
                 .parse(input)
         };
 
         let deref_parser = move |input| {
-            right(whitespace_wrap(literal("*")), code())
-                .map(|on| CodeExpression::Deref { on: Box::new(on) })
+            right(whitespace_wrap(literal("*")), expression())
+                .map(|on| Expression::Deref { on: Box::new(on) })
                 .parse(input)
         };
 
         let not_parser = move |input| {
-            right(whitespace_wrap(literal("!")), code())
-                .map(|on| CodeExpression::Not { on: Box::new(on) })
+            right(whitespace_wrap(literal("!")), expression())
+                .map(|on| Expression::Not { on: Box::new(on) })
                 .parse(input)
         };
 
@@ -377,24 +375,24 @@ fn ungrouped_code<'a>() -> impl Parser<'a, CodeExpression> {
     }
 }
 
-fn string_literal<'a>() -> impl Parser<'a, CodeExpression> {
-    quoted_string().map(|value| CodeExpression::StringLiteral { value })
+fn string_literal<'a>() -> impl Parser<'a, Expression> {
+    quoted_string().map(|value| Expression::StringLiteral { value })
 }
 
-fn number_literal<'a>() -> impl Parser<'a, CodeExpression> {
+fn number_literal<'a>() -> impl Parser<'a, Expression> {
     any_of!(
-        float.map(|value| CodeExpression::FloatLiteral { value }),
-        int.map(|value| CodeExpression::IntLiteral { value })
+        float.map(|value| Expression::FloatLiteral { value }),
+        int.map(|value| Expression::IntLiteral { value })
     )
 }
 
-fn bool_literal<'a>() -> impl Parser<'a, CodeExpression> {
-    any_of!(literal("true"), literal("false")).map(|value| CodeExpression::BoolLiteral {
+fn bool_literal<'a>() -> impl Parser<'a, Expression> {
+    any_of!(literal("true"), literal("false")).map(|value| Expression::BoolLiteral {
         value: value == "true",
     })
 }
 
-fn code_expr_or_literal<'a>() -> impl Parser<'a, CodeExpression> {
+fn code_expr_or_literal<'a>() -> impl Parser<'a, Expression> {
     any_of!(
         number_literal(),
         string_literal(),
@@ -403,7 +401,7 @@ fn code_expr_or_literal<'a>() -> impl Parser<'a, CodeExpression> {
     )
 }
 
-fn code_expr<'a>() -> impl Parser<'a, CodeExpression> {
+fn code_expr<'a>() -> impl Parser<'a, Expression> {
     whitespace_wrap(move |input| {
         let (mut remaining, mut left) = symbol().parse(input)?;
 
@@ -414,7 +412,7 @@ fn code_expr<'a>() -> impl Parser<'a, CodeExpression> {
                 '.' => {
                     let (new_remaining, field) = non_keyword_ident().parse(new_remaining)?;
                     remaining = new_remaining;
-                    left = CodeExpression::Accessor {
+                    left = Expression::Accessor {
                         on: Box::new(left),
                         field,
                     };
@@ -422,7 +420,7 @@ fn code_expr<'a>() -> impl Parser<'a, CodeExpression> {
                 '(' => {
                     let (new_remaining, params) = call_params().parse(new_remaining)?;
                     remaining = new_remaining;
-                    left = CodeExpression::Call {
+                    left = Expression::Call {
                         on: Box::new(left),
                         params,
                     };
@@ -435,10 +433,10 @@ fn code_expr<'a>() -> impl Parser<'a, CodeExpression> {
     })
 }
 
-fn call_params<'a>() -> impl Parser<'a, Vec<CodeExpression>> {
+fn call_params<'a>() -> impl Parser<'a, Vec<Expression>> {
     // We have to box up so we don't hit type recursion limits :)
     left(
-        delimited_list(whitespace_wrap(BoxedParser::new(code())), ","),
+        delimited_list(whitespace_wrap(BoxedParser::new(expression())), ","),
         literal(")"),
     )
 }
@@ -465,13 +463,13 @@ where
     }
 }
 
-fn symbol<'a>() -> impl Parser<'a, CodeExpression> {
+fn symbol<'a>() -> impl Parser<'a, Expression> {
     either(
-        right(literal("@"), non_keyword_ident()).map(|name| CodeExpression::Symbol {
+        right(literal("@"), non_keyword_ident()).map(|name| Expression::Symbol {
             name,
             assigned: true,
         }),
-        non_keyword_ident().map(|name| CodeExpression::Symbol {
+        non_keyword_ident().map(|name| Expression::Symbol {
             name,
             assigned: false,
         }),
@@ -506,17 +504,6 @@ pub trait Parser<'a, Output> {
         F: Fn(&Output) -> bool + 'a,
     {
         BoxedParser::new(pred(self, predicate))
-    }
-
-    fn and_then<F, NextParser, NewOutput>(self, f: F) -> BoxedParser<'a, NewOutput>
-    where
-        Self: Sized + 'a,
-        Output: 'a,
-        NewOutput: 'a,
-        NextParser: Parser<'a, NewOutput> + 'a,
-        F: Fn(Output) -> NextParser + 'a,
-    {
-        BoxedParser::new(and_then(self, f))
     }
 }
 
@@ -595,7 +582,7 @@ fn float(input: &str) -> ParseResult<f32> {
     Ok((&input[next_index..], number))
 }
 
-fn int(input: &str) -> ParseResult<i64> {
+fn int(input: &str) -> ParseResult<i32> {
     let mut matched = String::new();
 
     let mut chars = input.chars();
@@ -761,18 +748,6 @@ where
     }
 }
 
-fn and_then<'a, P, F, A, B, NextP>(parser: P, f: F) -> impl Parser<'a, B>
-where
-    P: Parser<'a, A>,
-    NextP: Parser<'a, B>,
-    F: Fn(A) -> NextP,
-{
-    move |input| {
-        let (next_input, result) = parser.parse(input)?;
-        f(result).parse(next_input)
-    }
-}
-
 fn quoted_string<'a>() -> impl Parser<'a, String> {
     map(
         right(
@@ -931,20 +906,20 @@ mod test {
                 "",
                 Template {
                     expressions: vec![
-                        Expression::Literal("<h1>Hello ".to_string()),
-                        Expression::CodeBlock(CodeExpression::Symbol {
+                        TemplateBlock::Literal("<h1>Hello ".to_string()),
+                        TemplateBlock::Expression(Expression::Symbol {
                             name: "name".into(),
                             assigned: true
                         }),
-                        Expression::Literal("!</h1><p>Count is ".to_string()),
-                        Expression::CodeBlock(CodeExpression::Symbol {
+                        TemplateBlock::Literal("!</h1><p>Count is ".to_string()),
+                        TemplateBlock::Expression(Expression::Symbol {
                             name: "count".into(),
                             assigned: false,
                         }),
-                        Expression::Literal("</p>".to_string()),
-                        Expression::CodeBlock(CodeExpression::Accessor {
-                            on: Box::new(CodeExpression::Accessor {
-                                on: Box::new(CodeExpression::Symbol {
+                        TemplateBlock::Literal("</p>".to_string()),
+                        TemplateBlock::Expression(Expression::Accessor {
+                            on: Box::new(Expression::Accessor {
+                                on: Box::new(Expression::Symbol {
                                     name: "deal".into(),
                                     assigned: true
                                 }),
@@ -952,9 +927,9 @@ mod test {
                             }),
                             field: "address".into()
                         }),
-                        Expression::CodeBlock(CodeExpression::Call {
-                            on: Box::new(CodeExpression::Accessor {
-                                on: Box::new(CodeExpression::Symbol {
+                        TemplateBlock::Expression(Expression::Call {
+                            on: Box::new(Expression::Accessor {
+                                on: Box::new(Expression::Symbol {
                                     name: "business".into(),
                                     assigned: true
                                 }),
@@ -962,49 +937,49 @@ mod test {
                             }),
                             params: vec![]
                         }),
-                        Expression::CodeBlock(CodeExpression::Call {
-                            on: Box::new(CodeExpression::Accessor {
-                                on: Box::new(CodeExpression::Symbol {
+                        TemplateBlock::Expression(Expression::Call {
+                            on: Box::new(Expression::Accessor {
+                                on: Box::new(Expression::Symbol {
                                     name: "business".into(),
                                     assigned: true
                                 }),
                                 field: "display_name".into(),
                             }),
                             params: vec![
-                                CodeExpression::Symbol {
+                                Expression::Symbol {
                                     name: "time".into(),
                                     assigned: false,
                                 },
-                                CodeExpression::Symbol {
+                                Expression::Symbol {
                                     name: "name".into(),
                                     assigned: true,
                                 },
                             ]
                         }),
-                        Expression::For {
-                            iterator: Box::new(CodeExpression::Symbol {
+                        TemplateBlock::For {
+                            iterator: Box::new(Expression::Symbol {
                                 name: "names".into(),
                                 assigned: true
                             }),
                             binding: "name".into(),
                             body: vec![
-                                Expression::Literal("<h3>".into()),
-                                Expression::CodeBlock(CodeExpression::Symbol {
+                                TemplateBlock::Literal("<h3>".into()),
+                                TemplateBlock::Expression(Expression::Symbol {
                                     name: "name".into(),
                                     assigned: false,
                                 }),
-                                Expression::Literal("</h3>".into()),
+                                TemplateBlock::Literal("</h3>".into()),
                             ]
                         },
-                        Expression::If {
-                            condition: Box::new(CodeExpression::Symbol {
+                        TemplateBlock::If {
+                            condition: Box::new(Expression::Symbol {
                                 name: "thing".into(),
                                 assigned: true
                             }),
-                            true_arm: vec![Expression::Literal("Enabled!".into()),],
-                            false_arm: vec![Expression::Literal("Disabled".into())],
+                            true_arm: vec![TemplateBlock::Literal("Enabled!".into()),],
+                            false_arm: vec![TemplateBlock::Literal("Disabled".into())],
                         },
-                        Expression::IfLet {
+                        TemplateBlock::IfLet {
                             pattern: Pattern::Enum {
                                 type_path: TypePath {
                                     segments: vec!["Expression".into(), "Code".into()],
@@ -1023,17 +998,17 @@ mod test {
                                     },
                                 ],
                             },
-                            data: Box::new(CodeExpression::Symbol {
+                            data: Box::new(Expression::Symbol {
                                 name: "thing".into(),
                                 assigned: false,
                             }),
-                            true_arm: vec![Expression::CodeBlock(CodeExpression::Symbol {
+                            true_arm: vec![TemplateBlock::Expression(Expression::Symbol {
                                 name: "inner".into(),
                                 assigned: false,
                             },),],
                             false_arm: vec![],
                         },
-                        Expression::IfLet {
+                        TemplateBlock::IfLet {
                             pattern: Pattern::Struct {
                                 type_path: TypePath {
                                     segments: vec!["some".into(), "module".into(), "Thing".into(),],
@@ -1063,11 +1038,11 @@ mod test {
                                     ),
                                 ],
                             },
-                            data: Box::new(CodeExpression::Symbol {
+                            data: Box::new(Expression::Symbol {
                                 name: "my_thing".into(),
                                 assigned: false,
                             }),
-                            true_arm: vec![Expression::CodeBlock(CodeExpression::Symbol {
+                            true_arm: vec![TemplateBlock::Expression(Expression::Symbol {
                                 name: "a".into(),
                                 assigned: false,
                             },),],
@@ -1088,9 +1063,9 @@ mod test {
             Ok((
                 "",
                 Template {
-                    expressions: vec![Expression::CodeBlock(CodeExpression::Ref {
-                        on: Box::new(CodeExpression::Accessor {
-                            on: Box::new(CodeExpression::Symbol {
+                    expressions: vec![TemplateBlock::Expression(Expression::Ref {
+                        on: Box::new(Expression::Accessor {
+                            on: Box::new(Expression::Symbol {
                                 name: "test".into(),
                                 assigned: true
                             }),
@@ -1112,8 +1087,8 @@ mod test {
             Ok((
                 "",
                 Template {
-                    expressions: vec![Expression::Match {
-                        data: Box::new(CodeExpression::Symbol {
+                    expressions: vec![TemplateBlock::Match {
+                        data: Box::new(Expression::Symbol {
                             name: "thing".into(),
                             assigned: false,
                         }),
@@ -1125,7 +1100,7 @@ mod test {
                                     },
                                     fields: vec![Pattern::Binding { name: "a".into() },],
                                 },
-                                vec![Expression::CodeBlock(CodeExpression::Symbol {
+                                vec![TemplateBlock::Expression(Expression::Symbol {
                                     name: "a".into(),
                                     assigned: false,
                                 },),],
@@ -1134,7 +1109,7 @@ mod test {
                                 Pattern::Binding {
                                     name: "None".into()
                                 },
-                                vec![Expression::Literal("None".into(),),],
+                                vec![TemplateBlock::Literal("None".into(),),],
                             ),
                         ],
                     },],
@@ -1151,14 +1126,14 @@ mod test {
             Ok((
                 "",
                 Template {
-                    expressions: vec![Expression::If {
-                        condition: Box::new(CodeExpression::BinOp {
+                    expressions: vec![TemplateBlock::If {
+                        condition: Box::new(Expression::BinOp {
                             op: BinaryOperator::Gt,
-                            left: Box::new(CodeExpression::Symbol {
+                            left: Box::new(Expression::Symbol {
                                 name: "count".into(),
                                 assigned: true
                             }),
-                            right: Box::new(CodeExpression::FloatLiteral { value: 3.0 }),
+                            right: Box::new(Expression::FloatLiteral { value: 3.0 }),
                         }),
                         true_arm: vec![],
                         false_arm: vec![],
@@ -1175,27 +1150,27 @@ mod test {
             Ok((
                 "",
                 Template {
-                    expressions: vec![Expression::If {
-                        condition: Box::new(CodeExpression::BinOp {
+                    expressions: vec![TemplateBlock::If {
+                        condition: Box::new(Expression::BinOp {
                             op: BinaryOperator::And,
-                            left: Box::new(CodeExpression::ParenGroup {
-                                on: Box::new(CodeExpression::BinOp {
+                            left: Box::new(Expression::ParenGroup {
+                                on: Box::new(Expression::BinOp {
                                     op: BinaryOperator::Gt,
-                                    left: Box::new(CodeExpression::Symbol {
+                                    left: Box::new(Expression::Symbol {
                                         name: "count".into(),
                                         assigned: true,
                                     }),
-                                    right: Box::new(CodeExpression::IntLiteral { value: 3 }),
+                                    right: Box::new(Expression::IntLiteral { value: 3 }),
                                 })
                             }),
-                            right: Box::new(CodeExpression::ParenGroup {
-                                on: Box::new(CodeExpression::BinOp {
+                            right: Box::new(Expression::ParenGroup {
+                                on: Box::new(Expression::BinOp {
                                     op: BinaryOperator::NotEq,
-                                    left: Box::new(CodeExpression::Symbol {
+                                    left: Box::new(Expression::Symbol {
                                         name: "thing".into(),
                                         assigned: true,
                                     }),
-                                    right: Box::new(CodeExpression::StringLiteral {
+                                    right: Box::new(Expression::StringLiteral {
                                         value: "hello".into()
                                     }),
                                 })

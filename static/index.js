@@ -64,7 +64,7 @@ window.onload = () => {
 };
 
 function update(root, template) {
-    morphdom(root, `<div id="rs-root">` + renderTemplate(template) + `</div>`, {
+    morphdom(root, `<div id="rs-root">${renderTemplate(template)}</div>`, {
         childrenOnly: true
     });
 }

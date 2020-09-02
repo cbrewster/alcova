@@ -3,7 +3,7 @@ extern crate proc_macro;
 mod ast;
 mod parse;
 
-use ast::{BinaryOperator, CodeExpression, Expression, Pattern, Template, TypePath};
+use ast::{BinaryOperator, Expression, Pattern, Template, TemplateBlock, TypePath};
 use parse::{parse_template, Parser};
 use proc_macro::TokenStream;
 use proc_macro_error::{abort, proc_macro_error};
@@ -125,42 +125,39 @@ fn impl_live_template(ast: &syn::DeriveInput) -> TokenStream {
     expanded.into()
 }
 
-fn generate_code_expression(
-    expression: &CodeExpression,
-    assignee: &str,
-) -> proc_macro2::TokenStream {
+fn generate_expression(expression: &Expression, assignee: &str) -> proc_macro2::TokenStream {
     let mut tokens: Vec<proc_macro2::TokenTree> = vec![];
 
     match expression {
-        CodeExpression::Ref { on } => {
-            let on = generate_code_expression(on, assignee);
+        Expression::Ref { on } => {
+            let on = generate_expression(on, assignee);
             tokens.extend(quote! { &#on });
         }
-        CodeExpression::Deref { on } => {
-            let on = generate_code_expression(on, assignee);
+        Expression::Deref { on } => {
+            let on = generate_expression(on, assignee);
             tokens.extend(quote! { *#on });
         }
-        CodeExpression::Not { on } => {
-            let on = generate_code_expression(on, assignee);
+        Expression::Not { on } => {
+            let on = generate_expression(on, assignee);
             tokens.extend(quote! { !(#on) });
         }
-        CodeExpression::ParenGroup { on } => {
-            let on = generate_code_expression(on, assignee);
+        Expression::ParenGroup { on } => {
+            let on = generate_expression(on, assignee);
             tokens.extend(quote! { ( #on ) });
         }
-        CodeExpression::IntLiteral { value } => {
+        Expression::IntLiteral { value } => {
             tokens.extend(quote! { (#value).try_into().unwrap() });
         }
-        CodeExpression::FloatLiteral { value } => {
+        Expression::FloatLiteral { value } => {
             tokens.extend(quote! { (#value).try_into().unwrap() });
         }
-        CodeExpression::StringLiteral { value } => {
+        Expression::StringLiteral { value } => {
             tokens.extend(quote! { #value });
         }
-        CodeExpression::BoolLiteral { value } => {
+        Expression::BoolLiteral { value } => {
             tokens.extend(quote! { #value });
         }
-        CodeExpression::Symbol { name, assigned } => {
+        Expression::Symbol { name, assigned } => {
             let name = format_ident!("{}", name);
             let name = if *assigned {
                 let assign = format_ident!("{}", assignee);
@@ -171,21 +168,21 @@ fn generate_code_expression(
 
             tokens.extend(quote! { #name });
         }
-        CodeExpression::Accessor { on, field } => {
-            let on = generate_code_expression(on, assignee);
+        Expression::Accessor { on, field } => {
+            let on = generate_expression(on, assignee);
             let field = format_ident!("{}", field);
             tokens.extend(quote! { #on.#field });
         }
-        CodeExpression::Call { on, params } => {
-            let on = generate_code_expression(on, assignee);
+        Expression::Call { on, params } => {
+            let on = generate_expression(on, assignee);
 
             let params = params
                 .iter()
-                .map(|param| generate_code_expression(param, assignee));
+                .map(|param| generate_expression(param, assignee));
 
             tokens.extend(quote! { #on( #( #params, )* ) });
         }
-        CodeExpression::BinOp { op, left, right } => {
+        Expression::BinOp { op, left, right } => {
             let op = match op {
                 BinaryOperator::EqEq => quote! { == },
                 BinaryOperator::NotEq => quote! { != },
@@ -197,8 +194,8 @@ fn generate_code_expression(
                 BinaryOperator::Or => quote! { || },
             };
 
-            let left = generate_code_expression(left, assignee);
-            let right = generate_code_expression(right, assignee);
+            let left = generate_expression(left, assignee);
+            let right = generate_expression(right, assignee);
 
             tokens.extend(quote! {
                 #left #op #right
@@ -252,26 +249,31 @@ fn generate_pattern(pattern: &Pattern) -> proc_macro2::TokenStream {
     tokens.into_iter().collect()
 }
 
-fn generate_expression(expression: &Expression, assignee: &str) -> proc_macro2::TokenStream {
+fn generate_template_block(
+    template_block: &TemplateBlock,
+    assignee: &str,
+) -> proc_macro2::TokenStream {
     let mut tokens: Vec<proc_macro2::TokenTree> = vec![];
 
-    match expression {
-        Expression::Literal(text) => tokens.extend(quote! {
+    match template_block {
+        TemplateBlock::Literal(text) => tokens.extend(quote! {
             #text,
         }),
-        Expression::CodeBlock(code_expr) => {
-            let code_expr = generate_code_expression(code_expr, assignee);
+        TemplateBlock::Expression(code_expr) => {
+            let code_expr = generate_expression(code_expr, assignee);
             tokens.extend(quote! { #code_expr.to_string() });
         }
-        Expression::For {
+        TemplateBlock::For {
             binding,
             iterator,
             body,
         } => {
             let binding = format_ident!("{}", binding);
-            let iterator = generate_code_expression(iterator, "self");
+            let iterator = generate_expression(iterator, "self");
 
-            let body = body.iter().map(|child| generate_expression(child, "self"));
+            let body = body
+                .iter()
+                .map(|child| generate_template_block(child, "self"));
 
             tokens.extend(quote! {
                 {
@@ -283,19 +285,19 @@ fn generate_expression(expression: &Expression, assignee: &str) -> proc_macro2::
                 }
             });
         }
-        Expression::If {
+        TemplateBlock::If {
             condition,
             true_arm,
             false_arm,
         } => {
-            let condition = generate_code_expression(condition, assignee);
+            let condition = generate_expression(condition, assignee);
 
             let true_arm = true_arm
                 .iter()
-                .map(|expr| generate_expression(expr, "self"));
+                .map(|expr| generate_template_block(expr, "self"));
             let false_arm = false_arm
                 .iter()
-                .map(|expr| generate_expression(expr, "self"));
+                .map(|expr| generate_template_block(expr, "self"));
 
             tokens.extend(quote! {
                 {
@@ -309,21 +311,21 @@ fn generate_expression(expression: &Expression, assignee: &str) -> proc_macro2::
                 }
             });
         }
-        Expression::IfLet {
+        TemplateBlock::IfLet {
             pattern,
             data,
             true_arm,
             false_arm,
         } => {
             let pattern = generate_pattern(pattern);
-            let data = generate_code_expression(data, assignee);
+            let data = generate_expression(data, assignee);
 
             let true_arm = true_arm
                 .iter()
-                .map(|expr| generate_expression(expr, "self"));
+                .map(|expr| generate_template_block(expr, "self"));
             let false_arm = false_arm
                 .iter()
-                .map(|expr| generate_expression(expr, "self"));
+                .map(|expr| generate_template_block(expr, "self"));
 
             tokens.extend(quote! {
                 {
@@ -337,8 +339,8 @@ fn generate_expression(expression: &Expression, assignee: &str) -> proc_macro2::
                 }
             });
         }
-        Expression::Match { data, arms } => {
-            let data = generate_code_expression(data, assignee);
+        TemplateBlock::Match { data, arms } => {
+            let data = generate_expression(data, assignee);
             let arms = arms.iter().map(|arm| generate_match_arm(arm, assignee));
             tokens.extend(quote! {
                 {
@@ -356,14 +358,14 @@ fn generate_expression(expression: &Expression, assignee: &str) -> proc_macro2::
 }
 
 fn generate_match_arm(
-    (pattern, expressions): &(Pattern, Vec<Expression>),
+    (pattern, expressions): &(Pattern, Vec<TemplateBlock>),
     assignee: &str,
 ) -> proc_macro2::TokenStream {
     let pattern = generate_pattern(pattern);
 
     let expressions = expressions
         .iter()
-        .map(|expr| generate_expression(expr, assignee));
+        .map(|expr| generate_template_block(expr, assignee));
 
     quote! {
         #pattern => {
@@ -376,18 +378,14 @@ fn generate_slots(template: &Template) -> Result<proc_macro2::TokenStream, &'sta
     let mut tokens: Vec<proc_macro2::TokenTree> = vec![];
 
     for expression in &template.expressions {
-        let value = generate_expression(expression, "self");
+        let value = generate_template_block(expression, "self");
         match expression {
-            Expression::Literal(_) => {
+            TemplateBlock::Literal(_) => {
                 tokens.extend(quote! {
                     alcova::Slot::Static(#value),
                 });
             }
-            Expression::CodeBlock(_)
-            | Expression::For { .. }
-            | Expression::If { .. }
-            | Expression::IfLet { .. }
-            | Expression::Match { .. } => {
+            _ => {
                 tokens.extend(quote! {
                     alcova::Slot::Dynamic(#value),
                 });
@@ -407,7 +405,7 @@ fn generate_changes(template: &Template) -> Result<proc_macro2::TokenStream, &'s
             continue;
         }
 
-        let new_value = generate_expression(expression, "self");
+        let new_value = generate_template_block(expression, "self");
 
         let fields = deps.iter().map(|field| format_ident!("{}", field));
 
